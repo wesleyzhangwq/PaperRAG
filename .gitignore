@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# venv
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Env / secrets
+.env
+.env.local
+*.key
+
+# Node / frontend
+node_modules/
+dist/
+.vite/
+
+# Data / artifacts (too big for git)
+data/raw_metadata/*
+data/pdfs/*
+data/processed_txt/*
+data/failed.txt
+data/metadata_filtered.json
+!data/raw_metadata/.gitkeep
+!data/pdfs/.gitkeep
+chroma_db/
+!chroma_db/.gitkeep
+
+# Logs
+*.log
+logs/
+
+# Docker volumes
+mysql_data/

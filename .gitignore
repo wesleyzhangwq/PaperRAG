@@ -37,6 +37,9 @@ data/pdfs/*
 data/processed_txt/*
 data/failed.txt
 data/metadata_filtered.json
+data/paperrag.db
+data/*.db
+data/*.db-journal
 !data/raw_metadata/.gitkeep
 !data/pdfs/.gitkeep
 chroma_db/

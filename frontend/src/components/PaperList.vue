@@ -5,20 +5,25 @@ import { usePapersStore } from '../stores/papers'
 
 const store = usePapersStore()
 
-const categoryOptions = [
-  { label: '全部', value: null },
+import type { SelectOption } from 'naive-ui'
+
+const categoryOptions: SelectOption[] = [
+  { label: '全部', value: '__all__' },
   { label: 'cs.AI', value: 'cs.AI' },
   { label: 'cs.CL', value: 'cs.CL' },
   { label: 'cs.LG', value: 'cs.LG' },
   { label: '用户上传', value: 'user.upload' },
 ]
 
-const yearOptions = [
-  { label: '不限', value: null },
+const yearOptions: SelectOption[] = [
+  { label: '不限', value: 0 },
   ...Array.from({ length: 4 }, (_, i) => 2023 + i).map((y) => ({ label: `${y}+`, value: y })),
 ]
 
 function applyFilters() {
+  // Treat sentinel values as null for API
+  if ((store.filters.category as any) === '__all__') store.filters.category = null
+  if (store.filters.year_min === 0) store.filters.year_min = null
   store.load()
 }
 

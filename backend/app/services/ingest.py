@@ -75,7 +75,8 @@ def _ingest_one(db: Session, record: dict, force: bool = False) -> tuple[str, st
         paper.ingest_error = f"{type(e).__name__}: {e}"
         return paper.paper_id, "failed"
 
-    # Clear old chunks in MySQL + Qdrant for idempotent rerun
+    # Idempotent rerun: refresh Qdrant first, only mutate MySQL chunks after vectors persist.
+    # Otherwise a failed embed still gets committed and leaves MySQL without matching vectors.
     vs = get_vector_store()
     old_ids = [c.chunk_id for c in db.query(Chunk).filter(Chunk.paper_id == paper.paper_id).all()]
     if old_ids:
@@ -83,9 +84,8 @@ def _ingest_one(db: Session, record: dict, force: bool = False) -> tuple[str, st
             vs.delete(ids=old_ids)
         except Exception:
             pass
-    db.query(Chunk).filter(Chunk.paper_id == paper.paper_id).delete(synchronize_session=False)
 
-    # Build chunks
+    # Build chunks (in memory only until Qdrant upsert succeeds)
     chunk_ids: list[str] = []
     texts: list[str] = []
     metadatas: list[dict] = []
@@ -113,14 +113,15 @@ def _ingest_one(db: Session, record: dict, force: bool = False) -> tuple[str, st
             n_tokens=len(ch.text) // 4,
         ))
 
-    db.add_all(db_chunks)
-
     try:
         vs.add_texts(texts=texts, metadatas=metadatas, ids=chunk_ids)
     except Exception as e:
         paper.ingest_status = "failed"
         paper.ingest_error = f"embed: {type(e).__name__}: {e}"
         return paper.paper_id, "failed"
+
+    db.query(Chunk).filter(Chunk.paper_id == paper.paper_id).delete(synchronize_session=False)
+    db.add_all(db_chunks)
 
     paper.num_chunks = len(chunks)
     paper.ingest_status = "ok"

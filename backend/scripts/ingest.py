@@ -1,8 +1,10 @@
-"""Phase 3 entrypoint — parse PDFs, chunk, embed, persist.
+"""CLI：解析 PDF → 分块 → 嵌入 → 写入 MySQL（papers/chunks）与 Qdrant（向量）。
+
+需已配置 `.env` 中的 MySQL 与 Qdrant，并已运行 `download_arxiv.py` 生成元数据 JSON。
 
 Usage:
-    python scripts/ingest.py
-    python scripts/ingest.py --force           # re-embed everything
+    cd backend && python scripts/ingest.py
+    python scripts/ingest.py --force              # 强制重跑已入库论文
     python scripts/ingest.py --metadata path/to.json
 """
 from __future__ import annotations

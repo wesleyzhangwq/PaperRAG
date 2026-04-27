@@ -1,4 +1,4 @@
-"""Hybrid retrieval: Chroma similarity search with metadata filtering."""
+"""Vector retrieval: Qdrant similarity search with metadata filtering."""
 from __future__ import annotations
 
 from typing import Optional
@@ -6,7 +6,7 @@ from typing import Optional
 from langchain_core.documents import Document
 
 from app.core.config import get_settings
-from app.db.chroma import get_vector_store
+from app.db.vector import get_vector_store
 from app.schemas.chat import ChatFilter
 
 

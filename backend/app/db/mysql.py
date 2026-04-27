@@ -1,4 +1,4 @@
-"""SQLAlchemy engine / Session / Base. Works with MySQL or SQLite."""
+"""SQLAlchemy engine / Session / Base for MySQL."""
 from __future__ import annotations
 
 from sqlalchemy import create_engine
@@ -8,11 +8,7 @@ from app.core.config import get_settings
 
 settings = get_settings()
 
-_engine_kwargs: dict = {"pool_pre_ping": True, "echo": False}
-if settings.sqlalchemy_url.startswith("sqlite"):
-    _engine_kwargs["connect_args"] = {"check_same_thread": False}
-
-engine = create_engine(settings.sqlalchemy_url, **_engine_kwargs)
+engine = create_engine(settings.sqlalchemy_url, pool_pre_ping=True, echo=False)
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 

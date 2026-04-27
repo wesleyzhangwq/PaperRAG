@@ -16,7 +16,7 @@ settings = get_settings()
 app = FastAPI(
     title="PaperRAG",
     version="0.1.0",
-    description="arXiv RAG with MySQL/SQLite + Chroma + Ollama (gemma4:e4b + bge-m3).",
+    description="arXiv RAG with MySQL + Qdrant + Ollama (gemma4:e4b + bge-m3).",
 )
 
 app.add_middleware(
@@ -45,5 +45,6 @@ def health() -> dict:
         "llm_model": settings.llm_model,
         "embedding_model": settings.embedding_model,
         "ollama": settings.ollama_base_url,
-        "db_kind": "mysql" if settings.sqlalchemy_url.startswith("mysql") else "sqlite",
+        "db": "mysql",
+        "vector": "qdrant",
     }

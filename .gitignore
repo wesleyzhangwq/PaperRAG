@@ -15,6 +15,10 @@ venv/
 env/
 ENV/
 
+# Vendor / IDE extras (do not commit)
+.minimax/
+.cursor/
+
 # IDE
 .idea/
 .vscode/
@@ -37,13 +41,10 @@ data/pdfs/*
 data/processed_txt/*
 data/failed.txt
 data/metadata_filtered.json
-data/paperrag.db
 data/*.db
 data/*.db-journal
 !data/raw_metadata/.gitkeep
 !data/pdfs/.gitkeep
-chroma_db/
-!chroma_db/.gitkeep
 
 # Logs
 *.log
@@ -51,3 +52,6 @@ logs/
 
 # Docker volumes
 mysql_data/
+
+# Legacy Chroma persist (project uses Qdrant only)
+chroma_db/

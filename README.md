@@ -1,14 +1,14 @@
 # PaperRAG
 
-本地全链路学术论文 RAG 系统：arXiv 论文 → MySQL + Chroma → Ollama (gemma4:e4b + bge-m3) → FastAPI → Vue3 三栏 UI。
+本地全链路学术论文 RAG 系统：arXiv 论文 → MySQL + Qdrant → Ollama (`gemma4:e4b` + `bge-m3`) → FastAPI → Vue3 三栏 UI。
 
 ## 技术栈
 
-- 后端：Python 3.11 + FastAPI + LangChain + SQLAlchemy
-- 向量库：Chroma 0.5（langchain-chroma）
+- 后端：Python 3.11+ + FastAPI + LangChain + SQLAlchemy
+- 向量库：Qdrant
 - 关系库：MySQL 8.0（Docker）
 - LLM / Embedding：Ollama 本地（`gemma4:e4b` / `bge-m3`）
-- 解析：Unstructured（fallback pdfplumber + PyMuPDF）
+- 解析：pdfplumber + PyMuPDF（可选 Unstructured）
 - 前端：Vue 3.4 + Vite 5 + TypeScript + Naive UI + Pinia
 
 ## 快速开始
@@ -18,12 +18,14 @@
 ```bash
 # 宿主机安装 Ollama 并拉模型
 ollama pull gemma4:e4b      # 9.6 GB
-ollama pull bge-m3           # ~1.2 GB
-ollama serve                 # 确保 :11434 可访问
+ollama pull bge-m3         # ~1.2 GB
+ollama serve               # 确保 :11434 可访问
 
-# 起 MySQL
-docker compose up -d mysql
+# 起 MySQL + Qdrant（本地开发）
+docker compose up -d mysql qdrant
 ```
+
+复制环境变量：`cp .env.example .env`，确认其中 `MYSQL_HOST`、`QDRANT_URL` 等与你的部署一致。
 
 ### 1. 拉取 50 篇 arXiv 论文（Pilot）
 
@@ -60,21 +62,30 @@ docker compose up -d
 # http://localhost:8080
 ```
 
+### 5. 从现有 chunks 重建 Qdrant 向量索引
+
+```bash
+cd backend
+python scripts/rebuild_vectors.py
+# 可选：只重建某篇论文
+python scripts/rebuild_vectors.py --paper-id 2401.01234
+```
+
 ## 架构
 
 ```
-User Query ──► FastAPI /chat ──► Chroma (vec+metadata) ──► top-k chunks
-                                                               │
-                                  ──► MySQL (papers/chunks) ◄──┘
-                                                               │
-                                                               ▼
-                              Ollama gemma4:e4b (with citation prompt)
-                                                               │
-                                                               ▼
-                                 {answer, sources[paper_id,title,doi,score]}
-                                                               │
-                                                               ▼
-                               Vue3 三栏：PaperList | ChatWindow | CitationCard
+User Query ──► FastAPI /chat ──► Qdrant (vec+metadata) ──► top-k chunks
+                                                         │
+                            ──► MySQL (papers/chunks) ◄──┘
+                                                         │
+                                                         ▼
+                        Ollama gemma4:e4b (with citation prompt)
+                                                         │
+                                                         ▼
+                           {answer, sources[paper_id,title,doi,score]}
+                                                         │
+                                                         ▼
+                         Vue3 三栏：PaperList | ChatWindow | CitationCard
 ```
 
 ## 迭代路线

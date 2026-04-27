@@ -1,4 +1,4 @@
-"""Ingest service: parse PDFs → chunk → embed → persist (MySQL/SQLite + Chroma).
+"""Ingest service: parse PDFs → chunk → embed → persist (MySQL + Qdrant).
 
 Idempotent per paper_id. Safe to rerun; already-ingested papers are skipped.
 """
@@ -12,8 +12,8 @@ from sqlalchemy.orm import Session
 from tqdm import tqdm
 
 from app.core.config import get_settings
-from app.db.chroma import get_vector_store
 from app.db.mysql import SessionLocal, init_db
+from app.db.vector import get_vector_store
 from app.models.paper import Chunk, Paper
 from app.utils.chunker import chunk_pages
 from app.utils.pdf import extract_pages
@@ -75,7 +75,7 @@ def _ingest_one(db: Session, record: dict, force: bool = False) -> tuple[str, st
         paper.ingest_error = f"{type(e).__name__}: {e}"
         return paper.paper_id, "failed"
 
-    # Clear old chunks (both DBs) for idempotent rerun
+    # Clear old chunks in MySQL + Qdrant for idempotent rerun
     vs = get_vector_store()
     old_ids = [c.chunk_id for c in db.query(Chunk).filter(Chunk.paper_id == paper.paper_id).all()]
     if old_ids:

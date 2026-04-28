@@ -75,15 +75,9 @@ def _ingest_one(db: Session, record: dict, force: bool = False) -> tuple[str, st
         paper.ingest_error = f"{type(e).__name__}: {e}"
         return paper.paper_id, "failed"
 
-    # Clear old chunks in MySQL + Qdrant for idempotent rerun
+    # Existing chunk ids (for stale Qdrant cleanup after successful embed + MySQL replace)
     vs = get_vector_store()
     old_ids = [c.chunk_id for c in db.query(Chunk).filter(Chunk.paper_id == paper.paper_id).all()]
-    if old_ids:
-        try:
-            vs.delete(ids=old_ids)
-        except Exception:
-            pass
-    db.query(Chunk).filter(Chunk.paper_id == paper.paper_id).delete(synchronize_session=False)
 
     # Build chunks
     chunk_ids: list[str] = []
@@ -113,14 +107,21 @@ def _ingest_one(db: Session, record: dict, force: bool = False) -> tuple[str, st
             n_tokens=len(ch.text) // 4,
         ))
 
-    db.add_all(db_chunks)
-
+    # Persist vectors first so we never commit MySQL with chunks removed if embedding fails.
     try:
         vs.add_texts(texts=texts, metadatas=metadatas, ids=chunk_ids)
     except Exception as e:
         paper.ingest_status = "failed"
         paper.ingest_error = f"embed: {type(e).__name__}: {e}"
         return paper.paper_id, "failed"
+
+    db.query(Chunk).filter(Chunk.paper_id == paper.paper_id).delete(synchronize_session=False)
+    db.add_all(db_chunks)
+
+    new_id_set = set(chunk_ids)
+    stale_qdrant = [cid for cid in old_ids if cid not in new_id_set]
+    if stale_qdrant:
+        vs.delete(ids=stale_qdrant)
 
     paper.num_chunks = len(chunks)
     paper.ingest_status = "ok"

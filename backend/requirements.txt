@@ -34,3 +34,6 @@ tqdm>=4.66
 # ===== utils =====
 python-dotenv>=1.0
 orjson>=3.10
+
+# ===== dev =====
+pytest>=8.0,<9.0

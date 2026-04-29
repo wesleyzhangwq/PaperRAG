@@ -143,7 +143,13 @@ def run_ingest(metadata_json: str | None = None, force: bool = False) -> dict:
             try:
                 _, status = _ingest_one(db, rec, force=force)
                 stats[status] += 1
-                db.commit()
+                # Do not commit failed ingests: _ingest_one may leave the session
+                # dirty (e.g. flushed deletes) while paper.ingest_status is still
+                # "ok" from a prior run — committing would persist empty/corrupt rows.
+                if status == "failed":
+                    db.rollback()
+                else:
+                    db.commit()
             except Exception:
                 db.rollback()
                 traceback.print_exc()

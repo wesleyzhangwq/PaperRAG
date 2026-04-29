@@ -1,0 +1,8 @@
+"""Request-scoped context (ASGI / thread pool safe via contextvars)."""
+from __future__ import annotations
+
+import contextvars
+
+request_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "request_id", default=None
+)

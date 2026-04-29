@@ -1,0 +1,49 @@
+{
+  "retry_backoff": {
+    "post_calls": 3,
+    "sleep_calls": [
+      0.01,
+      0.02
+    ],
+    "vector_len": 3,
+    "pass": true
+  },
+  "cache_hit_rate": {
+    "calls_with_cache": 1,
+    "calls_without_cache": 20,
+    "hit_rate_estimate": 0.95,
+    "latency_cache_sec": 0.0344,
+    "latency_no_cache_sec": 0.6843,
+    "latency_gain_ratio": 0.9497,
+    "pass": true
+  },
+  "hybrid_vs_vector": {
+    "queries": 3,
+    "ndcg_at_3_vector": 0.6309,
+    "ndcg_at_3_hybrid": 1.0,
+    "recall_at_3_vector": 1.0,
+    "recall_at_3_hybrid": 1.0,
+    "top1_acc_vector": 0.0,
+    "top1_acc_hybrid": 1.0,
+    "ndcg_gain": 0.3691,
+    "recall_gain": 0.0,
+    "top1_gain": 1.0,
+    "pass": true
+  },
+  "observability_json": {
+    "json_line": "{\"ts\": \"2026-04-29T06:05:58.070006+00:00\", \"level\": \"INFO\", \"logger\": \"app.services.retriever\", \"message\": \"retrieve_done\", \"request_id\": \"obs-check-001\", \"ms\": 12.34, \"chunks\": 3, \"phase\": \"done\", \"event\": \"rag.retrieve\"}",
+    "keys": [
+      "chunks",
+      "event",
+      "level",
+      "logger",
+      "message",
+      "ms",
+      "phase",
+      "request_id",
+      "ts"
+    ],
+    "pass": true
+  },
+  "all_pass": true
+}

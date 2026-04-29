@@ -1,25 +1,29 @@
-"""RAG chain: inspired by P4_RAG项目案例/rag.py — compose prompt → Ollama → parse → citations.
+"""RAG chain: compose prompt -> cloud LLM -> parse -> citations.
 
 We keep the chain deliberately simple (no history in MVP), but the LangChain
 pipe structure mirrors the reference implementation.
 """
 from __future__ import annotations
 
+import logging
 import re
+import time
 from typing import Optional
 
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_ollama import ChatOllama
+from langchain_openai import ChatOpenAI
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.context import request_id_ctx
 from app.models.paper import Paper
 from app.schemas.chat import ChatFilter, ChatRequest, ChatResponse, Source
 from app.services.retriever import retrieve
 
 settings = get_settings()
+log = logging.getLogger("app.services.generator")
 
 
 SYSTEM_PROMPT = """你是一个严谨的学术论文问答助手。请严格基于“已知参考资料”回答用户问题。
@@ -114,11 +118,16 @@ def _build_sources(
     return sources
 
 
-def _get_llm() -> ChatOllama:
-    return ChatOllama(
-        model=settings.llm_model,
-        base_url=settings.ollama_base_url,
+def _get_llm() -> ChatOpenAI:
+    s = get_settings()
+    if not s.llm_api_key:
+        raise RuntimeError("Missing LLM_API_KEY in .env")
+    return ChatOpenAI(
+        model=s.llm_model,
+        base_url=s.llm_api_base,
+        api_key=s.llm_api_key,
         temperature=0.2,
+        max_retries=max(0, s.llm_max_retries),
     )
 
 
@@ -126,6 +135,7 @@ def run_chat(db: Session, req: ChatRequest) -> ChatResponse:
     flt: Optional[ChatFilter] = req.filter
     top_k = req.top_k or settings.retrieval_k
     final_k = req.final_k or settings.final_context_k
+    rid = request_id_ctx.get()
 
     docs_scores = retrieve(req.query, flt=flt, top_k=top_k)
     if not docs_scores:
@@ -142,7 +152,38 @@ def run_chat(db: Session, req: ChatRequest) -> ChatResponse:
 
     llm = _get_llm()
     chain = _prompt | llm | StrOutputParser()
-    answer = chain.invoke({"query": req.query, "context": context})
+    t_llm = time.perf_counter()
+    try:
+        answer = chain.invoke({"query": req.query, "context": context})
+    except Exception:
+        log.exception(
+            "chat_llm_failed",
+            extra={
+                "event": "rag.chat",
+                "request_id": rid,
+                "phase": "llm_error",
+                "error_kind": "llm",
+                "top_k": top_k,
+                "final_k": final_k,
+            },
+        )
+        return ChatResponse(
+            answer="模型调用暂时失败，请稍后重试。",
+            sources=[],
+            used_chunks=len(trimmed),
+        )
+
+    log.info(
+        "chat_llm_ok",
+        extra={
+            "event": "rag.chat",
+            "request_id": rid,
+            "phase": "after_llm",
+            "ms": round((time.perf_counter() - t_llm) * 1000, 2),
+            "top_k": top_k,
+            "final_k": final_k,
+        },
+    )
 
     cited_ids = _extract_cited_ids(answer)
     sources = _build_sources(db, docs_scores, cited_ids, trimmed_ids)

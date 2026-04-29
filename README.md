@@ -1,13 +1,14 @@
 # PaperRAG
 
-本地全链路学术论文 RAG 系统：arXiv 论文 → MySQL + Qdrant → Ollama (`gemma4:e4b` + `bge-m3`) → FastAPI → Vue3 三栏 UI。
+本地全链路学术论文 RAG 系统：arXiv 论文 → MySQL + Qdrant → 云端 LLM/Embedding API（MiniMax + 阿里）→ FastAPI → Vue3 三栏 UI。
 
 ## 技术栈
 
 - 后端：Python 3.11+ + FastAPI + LangChain + SQLAlchemy
 - 向量库：Qdrant
 - 关系库：MySQL 8.0（Docker）
-- LLM / Embedding：Ollama 本地（`gemma4:e4b` / `bge-m3`）
+- LLM：MiniMax 官方 API（`MiniMax-M2.7`）
+- Embedding：阿里官方 API（`text-embedding-v4`）
 - 解析：pdfplumber + PyMuPDF（可选 Unstructured）
 - 前端：Vue 3.4 + Vite 5 + TypeScript + Naive UI + Pinia
 
@@ -16,16 +17,10 @@
 ### 0. 先决条件
 
 ```bash
-# 宿主机安装 Ollama 并拉模型
-ollama pull gemma4:e4b      # 9.6 GB
-ollama pull bge-m3         # ~1.2 GB
-ollama serve               # 确保 :11434 可访问
-
 # 起 MySQL + Qdrant（本地开发）
 docker compose up -d mysql qdrant
 ```
-
-复制环境变量：`cp .env.example .env`，确认其中 `MYSQL_HOST`、`QDRANT_URL` 等与你的部署一致。
+复制环境变量：`cp .env.example .env`，填写 `LLM_API_KEY` 与 `EMBEDDING_API_KEY`，并确认 `MYSQL_HOST`、`QDRANT_URL` 等与你的部署一致。
 
 ### 1. 拉取 50 篇 arXiv 论文（Pilot）
 
@@ -71,6 +66,16 @@ python scripts/rebuild_vectors.py
 python scripts/rebuild_vectors.py --paper-id 2401.01234
 ```
 
+### 6. Chunk 策略参数（可选）
+
+可在 `.env` 调整以下参数后重新 ingest：
+
+- `CHUNK_STRATEGY=v2`：默认文档级切分（`v1` 为旧版逐页切分，`v3` 为结构感知+动态切分）
+- `CHUNK_SIZE` / `CHUNK_OVERLAP`：切分窗口和重叠
+- `CHUNK_MIN_CHARS`：最小 chunk 长度过滤
+- `CHUNK_NOISE_SYMBOL_RATIO`：噪音符号比例阈值
+- `CHUNK_DROP_REFERENCES`：是否丢弃 References 区域
+
 ## 架构
 
 ```
@@ -79,7 +84,7 @@ User Query ──► FastAPI /chat ──► Qdrant (vec+metadata) ──► top
                             ──► MySQL (papers/chunks) ◄──┘
                                                          │
                                                          ▼
-                        Ollama gemma4:e4b (with citation prompt)
+                        MiniMax-M2.7 (with citation prompt)
                                                          │
                                                          ▼
                            {answer, sources[paper_id,title,doi,score]}
@@ -87,6 +92,11 @@ User Query ──► FastAPI /chat ──► Qdrant (vec+metadata) ──► top
                                                          ▼
                          Vue3 三栏：PaperList | ChatWindow | CitationCard
 ```
+
+### 架构文档（新人速览）
+
+- 新人快速理解全链路与关键模块：`docs/architecture-quickstart.md`
+- Chunk 策略设计与回滚说明：`docs/chunk-strategy-v2.md`
 
 ## 迭代路线
 

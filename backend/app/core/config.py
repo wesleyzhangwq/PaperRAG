@@ -31,16 +31,48 @@ class Settings(BaseSettings):
     qdrant_api_key: Optional[str] = None
     qdrant_collection: str = "paperrag"
 
-    # --- Ollama ---
-    ollama_base_url: str = "http://localhost:11434"
-    llm_model: str = "gemma4:e4b"
-    embedding_model: str = "bge-m3"
+    # --- Cloud LLM (MiniMax) ---
+    llm_model: str = "MiniMax-M2.7"
+    llm_api_base: str = "https://api.minimax.chat/v1"
+    llm_api_key: Optional[str] = None
+
+    # --- Cloud Embedding (Alibaba) ---
+    embedding_model: str = "text-embedding-v4"
+    embedding_api_base: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    embedding_api_key: Optional[str] = None
 
     # --- RAG ---
+    chunk_strategy: str = "v2"
     chunk_size: int = 800
     chunk_overlap: int = 100
+    chunk_min_chars: int = 80
+    chunk_noise_symbol_ratio: float = 0.35
+    chunk_drop_references: bool = False
     retrieval_k: int = 8
     final_context_k: int = 3
+
+    # --- Hybrid retrieval (vector oversample + BM25 fusion / rerank) ---
+    hybrid_retrieval_enabled: bool = True
+    hybrid_oversample: float = 2.5
+    hybrid_alpha: float = 0.72
+    hybrid_max_fetch: int = 64
+
+    # --- Caching ---
+    cache_retrieval_enabled: bool = True
+    cache_retrieval_ttl_sec: int = 180
+    cache_retrieval_max_entries: int = 256
+    cache_embedding_enabled: bool = True
+    cache_embedding_max_entries: int = 512
+
+    # --- Retries (embedding HTTP) ---
+    http_retry_max_attempts: int = 4
+    http_retry_backoff_base_sec: float = 0.45
+
+    # --- LLM ---
+    llm_max_retries: int = 2
+
+    # --- Observability ---
+    observability_json_logs: bool = True
 
     # --- Data paths ---
     data_dir: str = str(PROJECT_ROOT / "data")

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.mysql import get_db
+from app.models.paper import Paper
 from app.schemas.chat import UploadResponse
 from app.services.ingest import _ingest_one
 
@@ -62,12 +63,25 @@ async def upload_pdf(
     }
 
     pid, status = _ingest_one(db, record, force=True)
-    db.commit()
+    paper = db.query(Paper).filter_by(paper_id=pid).one()
+    num_chunks = paper.num_chunks
+    err_msg = paper.ingest_error
 
-    paper = db.query(__import__("app.models.paper", fromlist=["Paper"]).Paper).filter_by(paper_id=pid).one()
+    if status == "failed":
+        # _upsert_paper flushes metadata before ingest; committing here would leave
+        # a ghost Paper row (ok-looking listing with zero chunks and broken RAG).
+        db.rollback()
+        return UploadResponse(
+            paper_id=pid,
+            status=status,
+            num_chunks=0,
+            message=err_msg or "ingest failed",
+        )
+
+    db.commit()
     return UploadResponse(
         paper_id=pid,
         status=status,
-        num_chunks=paper.num_chunks,
-        message=paper.ingest_error if status == "failed" else "ingested",
+        num_chunks=num_chunks,
+        message="ingested",
     )

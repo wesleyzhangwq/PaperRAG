@@ -5,6 +5,7 @@ Idempotent per paper_id. Safe to rerun; already-ingested papers are skipped.
 from __future__ import annotations
 
 import json
+import logging
 import traceback
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from app.utils.chunker import chunk_pages
 from app.utils.pdf import extract_pages
 
 settings = get_settings()
+log = logging.getLogger("app.services.ingest")
 
 
 def _upsert_paper(db: Session, record: dict) -> Paper:
@@ -75,15 +77,8 @@ def _ingest_one(db: Session, record: dict, force: bool = False) -> tuple[str, st
         paper.ingest_error = f"{type(e).__name__}: {e}"
         return paper.paper_id, "failed"
 
-    # Clear old chunks in MySQL + Qdrant for idempotent rerun
     vs = get_vector_store()
     old_ids = [c.chunk_id for c in db.query(Chunk).filter(Chunk.paper_id == paper.paper_id).all()]
-    if old_ids:
-        try:
-            vs.delete(ids=old_ids)
-        except Exception:
-            pass
-    db.query(Chunk).filter(Chunk.paper_id == paper.paper_id).delete(synchronize_session=False)
 
     # Build chunks
     chunk_ids: list[str] = []
@@ -113,14 +108,30 @@ def _ingest_one(db: Session, record: dict, force: bool = False) -> tuple[str, st
             n_tokens=len(ch.text) // 4,
         ))
 
-    db.add_all(db_chunks)
-
+    # Upsert new vectors before removing MySQL rows or pruning Qdrant, so an
+    # embedding/API failure cannot leave committed MySQL with no vectors.
     try:
         vs.add_texts(texts=texts, metadatas=metadatas, ids=chunk_ids)
     except Exception as e:
         paper.ingest_status = "failed"
         paper.ingest_error = f"embed: {type(e).__name__}: {e}"
         return paper.paper_id, "failed"
+
+    new_ids = set(chunk_ids)
+    stale_vector_ids = [i for i in old_ids if i not in new_ids]
+    if stale_vector_ids:
+        try:
+            vs.delete(ids=stale_vector_ids)
+        except Exception:
+            # New vectors are already live; stale cleanup is best-effort (matches
+            # historical behavior of tolerating delete failures).
+            log.exception(
+                "ingest_vector_delete_failed",
+                extra={"paper_id": paper.paper_id, "stale_count": len(stale_vector_ids)},
+            )
+
+    db.query(Chunk).filter(Chunk.paper_id == paper.paper_id).delete(synchronize_session=False)
+    db.add_all(db_chunks)
 
     paper.num_chunks = len(chunks)
     paper.ingest_status = "ok"

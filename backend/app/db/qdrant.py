@@ -99,10 +99,19 @@ class AlibabaEmbeddingClient:
                         if isinstance(vec, list):
                             vectors.append(vec)
                     if vectors:
+                        if len(vectors) != len(chunk):
+                            raise RuntimeError(
+                                "Embedding API returned "
+                                f"{len(vectors)} vectors for {len(chunk)} input texts"
+                            )
                         all_vectors.extend(vectors)
                         continue
             raise RuntimeError(f"Unexpected embedding response shape: {data}")
 
+        if len(all_vectors) != len(texts):
+            raise RuntimeError(
+                f"Incomplete embeddings: got {len(all_vectors)} vectors for {len(texts)} texts"
+            )
         return all_vectors
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:

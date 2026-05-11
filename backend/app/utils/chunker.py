@@ -184,8 +184,11 @@ def chunk_pages_v3(pages: list[tuple[int, str]]) -> list[PaperChunk]:
     results: list[PaperChunk] = []
     in_references = False
     prev_piece = ""
+    skip_indices: set[int] = set()
 
     for idx, (block_offset, block) in enumerate(blocks):
+        if idx in skip_indices:
+            continue
         block_type = _classify_block(block)
         if block_type == "references":
             in_references = True
@@ -193,10 +196,13 @@ def chunk_pages_v3(pages: list[tuple[int, str]]) -> list[PaperChunk]:
             continue
 
         # If we hit a short heading-like block, attach it to next block.
+        merged_forward = False
         if block_type == "title" and idx + 1 < len(blocks):
             _, nxt = blocks[idx + 1]
             block = f"{block}\n\n{nxt}"
             block_type = "regular"
+            skip_indices.add(idx + 1)
+            merged_forward = True
 
         pieces = _split_by_type(
             text=block,
@@ -223,8 +229,9 @@ def chunk_pages_v3(pages: list[tuple[int, str]]) -> list[PaperChunk]:
             prev_piece = cleaned
 
         # Create a tiny bridge chunk for boundary continuity when needed.
-        if idx + 1 < len(blocks):
-            _, next_block = blocks[idx + 1]
+        next_bridge_idx = idx + 2 if merged_forward else idx + 1
+        if next_bridge_idx < len(blocks):
+            _, next_block = blocks[next_bridge_idx]
             if _needs_bridge(prev_piece, next_block):
                 tail = prev_piece[-180:].strip()
                 head = _clean_text(next_block)[:180].strip()

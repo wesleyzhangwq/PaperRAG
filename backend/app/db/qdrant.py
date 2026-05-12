@@ -99,6 +99,11 @@ class AlibabaEmbeddingClient:
                         if isinstance(vec, list):
                             vectors.append(vec)
                     if vectors:
+                        if len(vectors) != len(chunk):
+                            raise RuntimeError(
+                                f"Embedding API returned {len(vectors)} vectors for "
+                                f"{len(chunk)} inputs (batch offset {i})"
+                            )
                         all_vectors.extend(vectors)
                         continue
             raise RuntimeError(f"Unexpected embedding response shape: {data}")
@@ -215,6 +220,10 @@ class QdrantVectorStore:
         metadatas = metadatas or [{} for _ in texts]
         ids = ids or [str(uuid.uuid4()) for _ in texts]
         vectors = self._embedding.embed_documents(texts)
+        if len(vectors) != len(texts):
+            raise RuntimeError(
+                f"Embedding count mismatch: got {len(vectors)} vectors for {len(texts)} texts"
+            )
         points: list[models.PointStruct] = []
         for source_id, text, metadata, vector in zip(ids, texts, metadatas, vectors):
             point_id = _to_point_id(source_id)

@@ -99,10 +99,22 @@ class AlibabaEmbeddingClient:
                         if isinstance(vec, list):
                             vectors.append(vec)
                     if vectors:
+                        if len(vectors) != len(chunk):
+                            raise RuntimeError(
+                                "Embedding API returned "
+                                f"{len(vectors)} vectors for {len(chunk)} input texts "
+                                f"(batch offset {i}). Partial batches would silently drop chunks "
+                                "in the vector store."
+                            )
                         all_vectors.extend(vectors)
                         continue
             raise RuntimeError(f"Unexpected embedding response shape: {data}")
 
+        if len(all_vectors) != len(texts):
+            raise RuntimeError(
+                f"Embedding count mismatch: expected {len(texts)} vectors, "
+                f"got {len(all_vectors)}. Refusing to upsert partial vectors."
+            )
         return all_vectors
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
@@ -215,6 +227,10 @@ class QdrantVectorStore:
         metadatas = metadatas or [{} for _ in texts]
         ids = ids or [str(uuid.uuid4()) for _ in texts]
         vectors = self._embedding.embed_documents(texts)
+        if len(vectors) != len(texts):
+            raise RuntimeError(
+                f"embed_documents length mismatch: texts={len(texts)} vectors={len(vectors)}"
+            )
         points: list[models.PointStruct] = []
         for source_id, text, metadata, vector in zip(ids, texts, metadatas, vectors):
             point_id = _to_point_id(source_id)

@@ -81,8 +81,10 @@ def _ingest_one(db: Session, record: dict, force: bool = False) -> tuple[str, st
     if old_ids:
         try:
             vs.delete(ids=old_ids)
-        except Exception:
-            pass
+        except Exception as e:
+            paper.ingest_status = "failed"
+            paper.ingest_error = f"qdrant_delete: {type(e).__name__}: {e}"
+            return paper.paper_id, "failed"
     db.query(Chunk).filter(Chunk.paper_id == paper.paper_id).delete(synchronize_session=False)
 
     # Build chunks

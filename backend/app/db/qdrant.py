@@ -99,10 +99,20 @@ class AlibabaEmbeddingClient:
                         if isinstance(vec, list):
                             vectors.append(vec)
                     if vectors:
+                        if len(vectors) != len(chunk):
+                            raise RuntimeError(
+                                "Embedding API returned a different number of vectors than inputs: "
+                                f"got {len(vectors)} for {len(chunk)} texts"
+                            )
                         all_vectors.extend(vectors)
                         continue
             raise RuntimeError(f"Unexpected embedding response shape: {data}")
 
+        if len(all_vectors) != len(texts):
+            raise RuntimeError(
+                "Embedding batch length mismatch after all requests: "
+                f"expected {len(texts)} vectors, got {len(all_vectors)}"
+            )
         return all_vectors
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:

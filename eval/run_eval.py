@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import os
 import statistics
 import sys
 import time
@@ -176,7 +175,7 @@ def main() -> int:
     parser.add_argument("--dataset", type=str, default=str(PROJECT_ROOT / "eval/datasets/questions_v1.jsonl"))
     parser.add_argument("--summary-csv", type=str, default=str(PROJECT_ROOT / "eval/results/summary.csv"))
     parser.add_argument("--run-id", type=str, default=None)
-    parser.add_argument("--strategy", type=str, default=os.getenv("CHUNK_STRATEGY", "v2"))
+    parser.add_argument("--strategy", type=str, default="v2")
     parser.add_argument("--top-k", type=int, default=8)
     parser.add_argument("--final-k", type=int, default=3)
     parser.add_argument("--notes", type=str, default="")

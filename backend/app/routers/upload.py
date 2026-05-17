@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.mysql import get_db
+from app.models.paper import Paper
 from app.schemas.chat import UploadResponse
 from app.services.ingest import _ingest_one
 
@@ -64,7 +65,7 @@ async def upload_pdf(
     pid, status = _ingest_one(db, record, force=True)
     db.commit()
 
-    paper = db.query(__import__("app.models.paper", fromlist=["Paper"]).Paper).filter_by(paper_id=pid).one()
+    paper = db.query(Paper).filter_by(paper_id=pid).one()
     return UploadResponse(
         paper_id=pid,
         status=status,

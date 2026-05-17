@@ -28,7 +28,6 @@ export interface ChatResponse {
 export interface ChatFilter {
   category?: string | null
   year_min?: number | null
-  year_max?: number | null
   paper_ids?: string[] | null
 }
 
@@ -54,7 +53,6 @@ export async function chat(query: string, filter?: ChatFilter, session_id = 'def
 export async function listPapers(params: {
   category?: string
   year_min?: number
-  year_max?: number
   q?: string
   limit?: number
   offset?: number

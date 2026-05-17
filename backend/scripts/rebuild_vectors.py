@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.db.vector import get_vector_store  # noqa: E402
+from app.db.qdrant import get_qdrant_vector_store  # noqa: E402
 from app.models.paper import Chunk, Paper  # noqa: E402
 
 
@@ -42,7 +42,7 @@ def rebuild_vectors(paper_id: str | None = None, batch_size: int = 64) -> dict:
     from app.db.mysql import engine, init_db
 
     init_db()
-    vs = get_vector_store()
+    vs = get_qdrant_vector_store()
     SessionLocal = sessionmaker(bind=engine)
     db = SessionLocal()
 

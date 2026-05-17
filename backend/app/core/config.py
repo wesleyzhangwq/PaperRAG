@@ -42,7 +42,6 @@ class Settings(BaseSettings):
     embedding_api_key: Optional[str] = None
 
     # --- RAG ---
-    chunk_strategy: str = "v2"
     chunk_size: int = 800
     chunk_overlap: int = 100
     chunk_min_chars: int = 80

@@ -15,7 +15,7 @@ from rank_bm25 import BM25Okapi
 
 from app.core.config import get_settings
 from app.core.context import request_id_ctx
-from app.db.vector import get_vector_store
+from app.db.qdrant import get_qdrant_vector_store
 from app.schemas.chat import ChatFilter
 
 log = logging.getLogger("app.services.retriever")
@@ -135,7 +135,7 @@ def retrieve(
     top_k: Optional[int] = None,
 ) -> list[tuple[Document, float]]:
     settings = get_settings()
-    vs = get_vector_store()
+    vs = get_qdrant_vector_store()
     k = top_k or settings.retrieval_k
     where = _build_where(flt)
     hybrid = settings.hybrid_retrieval_enabled

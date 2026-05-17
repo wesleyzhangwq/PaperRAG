@@ -8,7 +8,6 @@ Returns a list of (page_num, page_text) tuples with blank pages filtered.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable
 
 import pdfplumber
 
@@ -61,7 +60,3 @@ def extract_pages(pdf_path: str | Path) -> list[tuple[int, str]]:
         pass
 
     return _extract_with_fitz(pdf_path)
-
-
-def join_pages(pages: Iterable[tuple[int, str]]) -> str:
-    return "\n\n".join(text for _, text in pages)

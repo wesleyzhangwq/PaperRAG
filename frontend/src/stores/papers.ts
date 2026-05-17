@@ -10,12 +10,10 @@ export const usePapersStore = defineStore('papers', () => {
   const filters = ref<{
     category: string | null
     year_min: number | null
-    year_max: number | null
     q: string
   }>({
     category: null,
     year_min: null,
-    year_max: null,
     q: '',
   })
 
@@ -25,7 +23,6 @@ export const usePapersStore = defineStore('papers', () => {
       const r = await listPapers({
         category: filters.value.category ?? undefined,
         year_min: filters.value.year_min ?? undefined,
-        year_max: filters.value.year_max ?? undefined,
         q: filters.value.q || undefined,
         limit: 200,
       })

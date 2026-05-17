@@ -13,7 +13,7 @@ from tqdm import tqdm
 
 from app.core.config import get_settings
 from app.db.mysql import SessionLocal, init_db
-from app.db.vector import get_vector_store
+from app.db.qdrant import get_qdrant_vector_store
 from app.models.paper import Chunk, Paper
 from app.utils.chunker import chunk_pages
 from app.utils.pdf import extract_pages
@@ -76,7 +76,7 @@ def _ingest_one(db: Session, record: dict, force: bool = False) -> tuple[str, st
         return paper.paper_id, "failed"
 
     # Clear old chunks in MySQL + Qdrant for idempotent rerun
-    vs = get_vector_store()
+    vs = get_qdrant_vector_store()
     old_ids = [c.chunk_id for c in db.query(Chunk).filter(Chunk.paper_id == paper.paper_id).all()]
     if old_ids:
         try:

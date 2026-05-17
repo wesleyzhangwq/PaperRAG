@@ -32,7 +32,6 @@ async function send() {
   const filter = {
     category: papersStore.filters.category ?? undefined,
     year_min: papersStore.filters.year_min ?? undefined,
-    year_max: papersStore.filters.year_max ?? undefined,
   }
   await chatStore.ask(q, filter)
 }
@@ -68,14 +67,14 @@ const quickQueries = [
   <div class="chat-window">
     <div class="header">
       <div class="title">PaperRAG · 对话</div>
-      <NSpin v-if="chatStore.loading" size="small" />
+      <NSpin v-if="chatStore.loading || chatStore.streaming" size="small" />
       <div class="actions">
         <NUpload :custom-request="handleUpload" accept=".pdf" :show-file-list="false">
           <NUploadTrigger abstract>
             <NButton size="small" secondary>上传 PDF</NButton>
           </NUploadTrigger>
         </NUpload>
-        <NButton size="small" quaternary @click="chatStore.clear" :disabled="!chatStore.messages.length">清空</NButton>
+        <NButton size="small" quaternary @click="chatStore.newConversation" :disabled="!chatStore.messages.length">新对话</NButton>
       </div>
     </div>
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 import statistics
 import sys
 import time
@@ -11,18 +12,20 @@ from pathlib import Path
 
 from starlette.testclient import TestClient
 
-# Make backend package importable when run as script
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_ROOT = PROJECT_ROOT / "backend"
 sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(BACKEND_ROOT))
 
 from backend.app.main import app  # noqa: E402
+from eval.metrics import context_precision, ndcg_at_k, precision_at_k  # noqa: E402
 
 try:
     import tiktoken
-except Exception:  # pragma: no cover - fallback when tiktoken unavailable
+except Exception:
     tiktoken = None
+
+CITATION_RE = re.compile(r"\[arxiv:([0-9]{4}\.[0-9]{4,6})\]")
 
 
 def load_questions(path: Path) -> list[dict]:
@@ -67,29 +70,43 @@ def estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
-def run_eval(questions: list[dict], top_k: int, final_k: int) -> dict:
+def run_eval(questions: list[dict], top_k: int, final_k: int, use_judge: bool = False) -> dict:
     latencies: list[float] = []
-    hit_count = 0
     rr_values: list[float] = []
     recall_values: list[float] = []
-    insufficient_count = 0
-    answer_correct_count = 0
+    ndcg_values: list[float] = []
+    precision_values: list[float] = []
+    ctx_precision_values: list[float] = []
     tokens_per_req: list[int] = []
+
+    judge_faithfulness: list[int] = []
+    judge_relevance: list[int] = []
+    judge_correctness: list[int] = []
+
+    judge_fn = None
+    if use_judge:
+        from eval.judge import judge_answer
+        judge_fn = judge_answer
 
     with TestClient(app) as client:
         for item in questions:
             query = item["query"]
             expected_pids = set(item.get("expected_paper_ids") or [])
-            expected_mode = item.get("expected_mode", "answer")
 
             t0 = time.time()
-            resp = client.post("/chat", json={"query": query, "top_k": top_k, "final_k": final_k})
+            resp = client.post(
+                "/chat",
+                json={"query": query, "top_k": top_k, "final_k": final_k},
+                params={"mode": "pipeline"},
+            )
             latency = time.time() - t0
             latencies.append(latency)
 
             if resp.status_code != 200:
                 rr_values.append(0.0)
                 recall_values.append(0.0)
+                ndcg_values.append(0.0)
+                precision_values.append(0.0)
                 tokens_per_req.append(estimate_tokens(query))
                 continue
 
@@ -99,72 +116,61 @@ def run_eval(questions: list[dict], top_k: int, final_k: int) -> dict:
             pred_pids = [s.get("paper_id") for s in sources if s.get("paper_id")]
             tokens_per_req.append(estimate_tokens(query) + estimate_tokens(answer))
 
-            # insufficient tracking (actual behavior)
-            actual_insufficient = "参考资料不足" in answer
-            if actual_insufficient:
-                insufficient_count += 1
+            cited_pids = CITATION_RE.findall(answer)
 
-            # retrieval metrics only for items with expected paper ids
             if expected_pids:
                 rank = first_relevant_rank(pred_pids[:5], expected_pids)
+                ndcg_values.append(ndcg_at_k(pred_pids, expected_pids, k=5))
+                precision_values.append(precision_at_k(pred_pids, expected_pids, k=5))
                 top5_hits = len(set(pred_pids[:5]) & expected_pids)
                 recall_values.append(top5_hits / max(1, len(expected_pids)))
-                if rank is not None:
-                    hit_count += 1
-                    rr_values.append(1.0 / rank)
-                else:
-                    rr_values.append(0.0)
-                # Heuristic correctness for labeled answer queries
-                if expected_mode == "answer":
-                    is_correct = (not actual_insufficient) and (top5_hits > 0)
-                else:
-                    is_correct = actual_insufficient
-            else:
-                # keep denominator stable for MRR by appending 0 for non-labeled
-                rr_values.append(0.0)
-                # not counted in recall denominator
-                if expected_mode == "insufficient":
-                    is_correct = actual_insufficient
-                else:
-                    is_correct = (not actual_insufficient) and (len(pred_pids) > 0)
+                rr_values.append(1.0 / rank if rank is not None else 0.0)
 
-            if is_correct:
-                answer_correct_count += 1
+            ctx_precision_values.append(context_precision(cited_pids, pred_pids[:5]))
 
-    total = len(questions)
+            if judge_fn is not None:
+                context_text = "\n---\n".join(
+                    s.get("snippet", "") for s in sources if s.get("snippet")
+                )
+                try:
+                    scores = judge_fn(query, context_text, answer)
+                    judge_faithfulness.append(scores.faithfulness)
+                    judge_relevance.append(scores.relevance)
+                    judge_correctness.append(scores.correctness)
+                except Exception as e:
+                    print(f"Judge error for query '{query[:50]}': {e}", file=sys.stderr)
+
     retrieval_labeled = sum(1 for q in questions if (q.get("expected_paper_ids") or []))
     retrieval_den = max(1, retrieval_labeled)
-    recall_avg = round(sum(recall_values) / retrieval_den, 4) if recall_values else 0.0
 
-    return {
-        "answer_correctness": round(answer_correct_count / total, 4),
-        "tokens_per_request": round(statistics.mean(tokens_per_req), 2) if tokens_per_req else 0.0,
-        "recall": recall_avg,
+    result = {
+        "ndcg_5": round(sum(ndcg_values) / retrieval_den, 4) if ndcg_values else 0.0,
+        "precision_5": round(sum(precision_values) / retrieval_den, 4) if precision_values else 0.0,
+        "recall_5": round(sum(recall_values) / retrieval_den, 4) if recall_values else 0.0,
+        "mrr": round(sum(rr_values) / retrieval_den, 4) if rr_values else 0.0,
+        "context_precision": round(statistics.mean(ctx_precision_values), 4) if ctx_precision_values else 0.0,
         "latency_p90": round(percentile(latencies, 0.9), 3),
-        "hit_at_5": round(hit_count / retrieval_den, 4),
-        "mrr": round(sum(rr_values) / retrieval_den, 4),
-        "insufficient_ratio": round(insufficient_count / total, 4),
+        "tokens_per_request": round(statistics.mean(tokens_per_req), 2) if tokens_per_req else 0.0,
     }
+
+    if judge_faithfulness:
+        result["faithfulness_avg"] = round(statistics.mean(judge_faithfulness), 2)
+        result["relevance_avg"] = round(statistics.mean(judge_relevance), 2)
+        result["correctness_avg"] = round(statistics.mean(judge_correctness), 2)
+
+    return result
 
 
 def append_summary(path: Path, row: dict) -> None:
     header = [
-        "run_id",
-        "timestamp",
-        "dataset",
-        "strategy",
-        "answer_correctness",
-        "tokens_per_request",
-        "recall",
-        "latency_p90",
-        "hit_at_5",
-        "mrr",
-        "insufficient_ratio",
-        "notes",
+        "run_id", "timestamp", "dataset",
+        "ndcg_5", "precision_5", "recall_5", "mrr", "context_precision",
+        "faithfulness_avg", "relevance_avg", "correctness_avg",
+        "latency_p90", "tokens_per_request", "notes",
     ]
     file_exists = path.exists()
     with path.open("a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=header)
+        writer = csv.DictWriter(f, fieldnames=header, extrasaction="ignore")
         if not file_exists:
             writer.writeheader()
         writer.writerow(row)
@@ -175,9 +181,9 @@ def main() -> int:
     parser.add_argument("--dataset", type=str, default=str(PROJECT_ROOT / "eval/datasets/questions_v1.jsonl"))
     parser.add_argument("--summary-csv", type=str, default=str(PROJECT_ROOT / "eval/results/summary.csv"))
     parser.add_argument("--run-id", type=str, default=None)
-    parser.add_argument("--strategy", type=str, default="v2")
     parser.add_argument("--top-k", type=int, default=8)
     parser.add_argument("--final-k", type=int, default=3)
+    parser.add_argument("--judge", action="store_true", help="Enable LLM-as-Judge scoring")
     parser.add_argument("--notes", type=str, default="")
     args = parser.parse_args()
 
@@ -185,13 +191,17 @@ def main() -> int:
     summary_path = Path(args.summary_csv)
     questions = load_questions(dataset_path)
 
-    metrics = run_eval(questions=questions, top_k=args.top_k, final_k=args.final_k)
+    metrics = run_eval(
+        questions=questions,
+        top_k=args.top_k,
+        final_k=args.final_k,
+        use_judge=args.judge,
+    )
     run_id = args.run_id or f"run-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     row = {
         "run_id": run_id,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "dataset": dataset_path.name,
-        "strategy": args.strategy,
         **metrics,
         "notes": args.notes,
     }

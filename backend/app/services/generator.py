@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+from collections.abc import Generator
 from typing import Optional
 
 from langchain_core.documents import Document
@@ -214,3 +215,82 @@ def run_chat(db: Session, req: ChatRequest) -> ChatResponse:
     _save_turn(db, session_id, req.query, answer)
 
     return ChatResponse(answer=answer, sources=sources, used_chunks=len(trimmed))
+
+
+def run_chat_stream(
+    db: Session, req: ChatRequest
+) -> Generator[dict, None, None]:
+    flt: Optional[ChatFilter] = req.filter
+    top_k = req.top_k or settings.retrieval_k
+    final_k = req.final_k or settings.final_context_k
+    rid = request_id_ctx.get()
+    session_id = req.session_id
+
+    docs_scores = retrieve(req.query, flt=flt, top_k=top_k)
+    if not docs_scores:
+        answer = "参考资料不足以回答该问题（未检索到相关论文片段）。"
+        _save_turn(db, session_id, req.query, answer)
+        yield {"event": "token", "data": {"t": answer}}
+        yield {"event": "sources", "data": {"sources": []}}
+        yield {"event": "done", "data": {}}
+        return
+
+    trimmed = docs_scores[:final_k]
+    trimmed_ids = {(d.metadata or {}).get("paper_id") for d, _ in trimmed}
+    context = _format_context([d for d, _ in trimmed])
+
+    history = _load_history(db, session_id, settings.chat_history_window)
+    messages: list[tuple[str, str]] = [("system", SYSTEM_PROMPT)]
+    for role, content in history:
+        messages.append((role, content))
+    messages.append(("user", USER_TEMPLATE))
+    prompt = ChatPromptTemplate.from_messages(messages)
+
+    llm = _get_llm()
+    chain = prompt | llm
+
+    full_answer = ""
+    t_llm = time.perf_counter()
+    try:
+        for chunk in chain.stream({"query": req.query, "context": context}):
+            token = chunk.content if hasattr(chunk, "content") else str(chunk)
+            if token:
+                full_answer += token
+                yield {"event": "token", "data": {"t": token}}
+    except Exception:
+        log.exception(
+            "chat_stream_failed",
+            extra={
+                "event": "rag.chat",
+                "request_id": rid,
+                "phase": "llm_error",
+                "error_kind": "llm",
+                "top_k": top_k,
+                "final_k": final_k,
+            },
+        )
+        yield {"event": "token", "data": {"t": "模型调用暂时失败，请稍后重试。"}}
+        yield {"event": "sources", "data": {"sources": []}}
+        yield {"event": "done", "data": {}}
+        return
+
+    log.info(
+        "chat_stream_ok",
+        extra={
+            "event": "rag.chat",
+            "request_id": rid,
+            "phase": "after_llm",
+            "ms": round((time.perf_counter() - t_llm) * 1000, 2),
+            "top_k": top_k,
+            "final_k": final_k,
+        },
+    )
+
+    cited_ids = _extract_cited_ids(full_answer)
+    sources = _build_sources(db, docs_scores, cited_ids, trimmed_ids)
+
+    _save_turn(db, session_id, req.query, full_answer)
+
+    sources_data = [s.model_dump() for s in sources]
+    yield {"event": "sources", "data": {"sources": sources_data}}
+    yield {"event": "done", "data": {}}

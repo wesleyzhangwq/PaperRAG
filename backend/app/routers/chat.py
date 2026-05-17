@@ -2,20 +2,26 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.db.mysql import get_db
 from app.schemas.chat import ChatRequest, ChatResponse
-from app.services.generator import run_chat, run_chat_stream
+from app.services.generator import run_agent_chat, run_chat, run_chat_stream
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
 @router.post("", response_model=ChatResponse)
-def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
-    return run_chat(db, req)
+def chat(
+    req: ChatRequest,
+    db: Session = Depends(get_db),
+    mode: str = Query("agent", regex="^(agent|pipeline)$"),
+) -> ChatResponse:
+    if mode == "pipeline":
+        return run_chat(db, req)
+    return run_agent_chat(db, req)
 
 
 @router.post("/stream")

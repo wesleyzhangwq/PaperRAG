@@ -22,6 +22,7 @@ from app.core.context import request_id_ctx
 from app.models.chat_history import ChatHistory
 from app.models.paper import Paper
 from app.schemas.chat import ChatFilter, ChatRequest, ChatResponse, Source
+from app.services.agent import run_agent
 from app.services.retriever import retrieve
 
 settings = get_settings()
@@ -294,3 +295,58 @@ def run_chat_stream(
     sources_data = [s.model_dump() for s in sources]
     yield {"event": "sources", "data": {"sources": sources_data}}
     yield {"event": "done", "data": {}}
+
+
+def run_agent_chat(db: Session, req: ChatRequest) -> ChatResponse:
+    rid = request_id_ctx.get()
+    session_id = req.session_id
+
+    history = _load_history(db, session_id, settings.chat_history_window)
+
+    t0 = time.perf_counter()
+    try:
+        answer = run_agent(db, req.query, history)
+    except Exception:
+        log.exception(
+            "agent_chat_failed",
+            extra={
+                "event": "rag.agent",
+                "request_id": rid,
+                "phase": "agent_error",
+                "error_kind": "agent",
+            },
+        )
+        return ChatResponse(
+            answer="Agent 调用暂时失败，请稍后重试。",
+            sources=[],
+            used_chunks=0,
+        )
+
+    log.info(
+        "agent_chat_ok",
+        extra={
+            "event": "rag.agent",
+            "request_id": rid,
+            "phase": "after_agent",
+            "ms": round((time.perf_counter() - t0) * 1000, 2),
+        },
+    )
+
+    cited_ids = _extract_cited_ids(answer)
+    sources: list[Source] = []
+    for pid in cited_ids:
+        paper = db.query(Paper).filter(Paper.paper_id == pid).one_or_none()
+        if paper:
+            sources.append(Source(
+                paper_id=pid,
+                title=paper.title or "",
+                authors=paper.authors or [],
+                year=paper.year,
+                primary_category=paper.primary_category,
+                doi=paper.doi,
+                arxiv_url=f"https://arxiv.org/abs/{pid}",
+            ))
+
+    _save_turn(db, session_id, req.query, answer)
+
+    return ChatResponse(answer=answer, sources=sources, used_chunks=0)

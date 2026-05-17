@@ -1,7 +1,7 @@
 """RAG chain: compose prompt -> cloud LLM -> parse -> citations.
 
-We keep the chain deliberately simple (no history in MVP), but the LangChain
-pipe structure mirrors the reference implementation.
+Multi-turn conversation history is injected into the prompt from the
+chat_history table, controlled by settings.chat_history_window.
 """
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.context import request_id_ctx
+from app.models.chat_history import ChatHistory
 from app.models.paper import Paper
 from app.schemas.chat import ChatFilter, ChatRequest, ChatResponse, Source
 from app.services.retriever import retrieve
@@ -49,6 +50,23 @@ _prompt = ChatPromptTemplate.from_messages([
     ("system", SYSTEM_PROMPT),
     ("user", USER_TEMPLATE),
 ])
+
+
+def _load_history(db: Session, session_id: str, window: int) -> list[tuple[str, str]]:
+    rows = (
+        db.query(ChatHistory)
+        .filter(ChatHistory.session_id == session_id)
+        .order_by(ChatHistory.created_at.desc())
+        .limit(window)
+        .all()
+    )
+    return [(r.role, r.content) for r in reversed(rows)]
+
+
+def _save_turn(db: Session, session_id: str, query: str, answer: str) -> None:
+    db.add(ChatHistory(session_id=session_id, role="user", content=query))
+    db.add(ChatHistory(session_id=session_id, role="assistant", content=answer))
+    db.commit()
 
 
 def _format_context(docs: list[Document]) -> str:
@@ -136,22 +154,27 @@ def run_chat(db: Session, req: ChatRequest) -> ChatResponse:
     top_k = req.top_k or settings.retrieval_k
     final_k = req.final_k or settings.final_context_k
     rid = request_id_ctx.get()
+    session_id = req.session_id
 
     docs_scores = retrieve(req.query, flt=flt, top_k=top_k)
     if not docs_scores:
-        return ChatResponse(
-            answer="参考资料不足以回答该问题（未检索到相关论文片段）。",
-            sources=[],
-            used_chunks=0,
-        )
+        answer = "参考资料不足以回答该问题（未检索到相关论文片段）。"
+        _save_turn(db, session_id, req.query, answer)
+        return ChatResponse(answer=answer, sources=[], used_chunks=0)
 
-    # Trim: final_k chunks for prompt, but keep full retrieval for source building
     trimmed = docs_scores[:final_k]
     trimmed_ids = {(d.metadata or {}).get("paper_id") for d, _ in trimmed}
     context = _format_context([d for d, _ in trimmed])
 
+    history = _load_history(db, session_id, settings.chat_history_window)
+    messages: list[tuple[str, str]] = [("system", SYSTEM_PROMPT)]
+    for role, content in history:
+        messages.append((role, content))
+    messages.append(("user", USER_TEMPLATE))
+    prompt = ChatPromptTemplate.from_messages(messages)
+
     llm = _get_llm()
-    chain = _prompt | llm | StrOutputParser()
+    chain = prompt | llm | StrOutputParser()
     t_llm = time.perf_counter()
     try:
         answer = chain.invoke({"query": req.query, "context": context})
@@ -187,5 +210,7 @@ def run_chat(db: Session, req: ChatRequest) -> ChatResponse:
 
     cited_ids = _extract_cited_ids(answer)
     sources = _build_sources(db, docs_scores, cited_ids, trimmed_ids)
+
+    _save_turn(db, session_id, req.query, answer)
 
     return ChatResponse(answer=answer, sources=sources, used_chunks=len(trimmed))

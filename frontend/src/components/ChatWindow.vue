@@ -67,7 +67,7 @@ const quickQueries = [
   <div class="chat-window">
     <div class="header">
       <div class="title">PaperRAG · 对话</div>
-      <NSpin v-if="chatStore.loading" size="small" />
+      <NSpin v-if="chatStore.loading || chatStore.streaming" size="small" />
       <div class="actions">
         <NUpload :custom-request="handleUpload" accept=".pdf" :show-file-list="false">
           <NUploadTrigger abstract>

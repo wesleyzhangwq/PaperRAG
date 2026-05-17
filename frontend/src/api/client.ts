@@ -75,3 +75,50 @@ export async function health() {
   const r = await http.get('/health')
   return r.data
 }
+
+export async function chatStream(
+  query: string,
+  filter?: ChatFilter,
+  session_id = 'default',
+  onToken?: (token: string) => void,
+  onSources?: (sources: Source[]) => void,
+  onDone?: () => void,
+  onError?: (err: Error) => void,
+): Promise<void> {
+  const resp = await fetch('/api/chat/stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, filter, session_id }),
+  })
+
+  if (!resp.ok || !resp.body) {
+    onError?.(new Error(`HTTP ${resp.status}`))
+    return
+  }
+
+  const reader = resp.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+
+    let currentEvent = ''
+    for (const line of lines) {
+      if (line.startsWith('event: ')) {
+        currentEvent = line.slice(7)
+      } else if (line.startsWith('data: ')) {
+        const data = JSON.parse(line.slice(6))
+        if (currentEvent === 'token') onToken?.(data.t)
+        else if (currentEvent === 'sources') onSources?.(data.sources)
+        else if (currentEvent === 'done') onDone?.()
+        currentEvent = ''
+      }
+    }
+  }
+}

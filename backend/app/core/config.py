@@ -73,6 +73,11 @@ class Settings(BaseSettings):
     # --- LLM ---
     llm_max_retries: int = 2
 
+    # --- Judge LLM (for eval, defaults to main LLM) ---
+    judge_llm_model: Optional[str] = None
+    judge_llm_api_base: Optional[str] = None
+    judge_llm_api_key: Optional[str] = None
+
     # --- Observability ---
     observability_json_logs: bool = True
 

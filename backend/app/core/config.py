@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     retrieval_k: int = 8
     final_context_k: int = 3
 
+    # --- Chat history ---
+    chat_history_window: int = 10
+
     # --- Hybrid retrieval (vector oversample + BM25 fusion / rerank) ---
     hybrid_retrieval_enabled: bool = True
     hybrid_oversample: float = 2.5

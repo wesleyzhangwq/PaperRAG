@@ -20,6 +20,7 @@ class Base(DeclarativeBase):
 def init_db() -> None:
     """Import models and create all tables."""
     from app.models import paper  # noqa: F401 register tables
+    from app.models import chat_history  # noqa: F401 register tables
     Base.metadata.create_all(bind=engine)
 
 

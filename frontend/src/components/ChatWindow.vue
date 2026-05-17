@@ -32,7 +32,6 @@ async function send() {
   const filter = {
     category: papersStore.filters.category ?? undefined,
     year_min: papersStore.filters.year_min ?? undefined,
-    year_max: papersStore.filters.year_max ?? undefined,
   }
   await chatStore.ask(q, filter)
 }
@@ -75,7 +74,7 @@ const quickQueries = [
             <NButton size="small" secondary>上传 PDF</NButton>
           </NUploadTrigger>
         </NUpload>
-        <NButton size="small" quaternary @click="chatStore.clear" :disabled="!chatStore.messages.length">清空</NButton>
+        <NButton size="small" quaternary @click="chatStore.newConversation" :disabled="!chatStore.messages.length">新对话</NButton>
       </div>
     </div>
 

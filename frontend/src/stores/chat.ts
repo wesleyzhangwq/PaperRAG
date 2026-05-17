@@ -16,20 +16,20 @@ export const useChatStore = defineStore('chat', () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
   const currentSources = ref<Source[]>([])
+  const sessionId = ref(crypto.randomUUID())
 
   async function ask(query: string, filter?: ChatFilter) {
     if (!query.trim()) return
     error.value = null
-    const userId = crypto.randomUUID()
     messages.value.push({
-      id: userId,
+      id: crypto.randomUUID(),
       role: 'user',
       content: query,
       created_at: Date.now(),
     })
     loading.value = true
     try {
-      const resp = await chat(query, filter)
+      const resp = await chat(query, filter, sessionId.value)
       messages.value.push({
         id: crypto.randomUUID(),
         role: 'assistant',
@@ -52,11 +52,12 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  function clear() {
+  function newConversation() {
     messages.value = []
     currentSources.value = []
     error.value = null
+    sessionId.value = crypto.randomUUID()
   }
 
-  return { messages, loading, error, currentSources, ask, clear }
+  return { messages, loading, error, currentSources, sessionId, ask, newConversation }
 })

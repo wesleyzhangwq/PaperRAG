@@ -40,7 +40,10 @@ def build_agent_graph(db: Session) -> object:
 
     def _synthesis(state: AgentState) -> dict:
         query = _extract_query(state)
-        return synthesis_node(state, query=query)
+        # If re-generating after reflection failure, pass issues as constraints
+        reflection = state.get("reflection_result") or {}
+        issues = reflection.get("issues") if not reflection.get("passed", True) else None
+        return synthesis_node(state, query=query, issues=issues or None)
 
     def _reflection(state: AgentState) -> dict:
         query = _extract_query(state)
@@ -72,6 +75,11 @@ def build_agent_graph(db: Session) -> object:
             return "final_answer"
         if state["reflection_count"] >= settings.agent_max_reflections:
             return "final_answer"
+        strategy = reflection.get("fix_strategy")
+        if strategy == "re_generate":
+            # Context is sufficient but answer has issues — re-synthesize
+            return "synthesis"
+        # Default: re_retrieve or unrecognized → re_planner for new retrieval
         return "re_planner"
 
     graph = StateGraph(AgentState)
@@ -89,7 +97,11 @@ def build_agent_graph(db: Session) -> object:
     graph.add_edge("planner", "executor")
     graph.add_conditional_edges("executor", _should_continue_executing)
     graph.add_edge("synthesis", "reflection")
-    graph.add_conditional_edges("reflection", _after_reflection)
+    graph.add_conditional_edges(
+        "reflection",
+        _after_reflection,
+        {"final_answer": "final_answer", "re_planner": "re_planner", "synthesis": "synthesis"},
+    )
     graph.add_edge("re_planner", "executor")
     graph.add_edge("final_answer", END)
 

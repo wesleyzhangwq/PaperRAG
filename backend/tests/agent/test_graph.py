@@ -29,11 +29,11 @@ def test_run_agent_sync_returns_response():
         MagicMock(content='[{"action": "retrieve_local", "params": {"query": "attention", "top_k": 8}, "reason": "search"}, {"action": "evaluate_docs", "params": {}, "reason": "check"}, {"action": "reasoning_synthesis", "params": {}, "reason": "answer"}]'),
         # evaluate_docs
         MagicMock(content='{"sufficient": true, "reason": "ok", "missing_aspects": []}'),
-        # synthesis
-        MagicMock(content="Attention 是一种机制 [arxiv:1706.03762]"),
         # reflection
         MagicMock(content='{"passed": true, "citation_ok": true, "completeness_ok": true, "logic_ok": true, "issues": [], "fix_strategy": null}'),
     ]
+    # Synthesis uses llm.stream() which yields chunk objects
+    mock_llm.stream.return_value = [MagicMock(content="Attention 是一种机制 [arxiv:1706.03762]")]
 
     mock_docs = [(Document(page_content="attention text", metadata={"paper_id": "1706.03762"}), 0.9)]
 

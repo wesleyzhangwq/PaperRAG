@@ -4,12 +4,13 @@ import type { SSEIntent, SSEPlan, SSEReflection, StepTrace, Source } from '../ty
 export type SSEEvent =
   | { type: 'intent'; data: SSEIntent }
   | { type: 'plan'; data: SSEPlan }
+  | { type: 'step_start'; data: { index: number; action: string; reason: string } }
   | { type: 'step_done'; data: StepTrace }
   | { type: 'reflection'; data: SSEReflection }
   | { type: 're_plan'; data: { new_steps: unknown[] } }
   | { type: 'token'; data: { t: string } }
   | { type: 'sources'; data: { sources: Source[] } }
-  | { type: 'done'; data: { total_ms: number } }
+  | { type: 'done'; data: { total_ms: number; steps_count: number; reflections: number } }
   | { type: 'error'; data: { message: string } }
 
 export function useSSE() {

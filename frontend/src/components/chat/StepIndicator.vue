@@ -1,7 +1,7 @@
 <template>
   <div class="flex items-start gap-2 py-1.5">
-    <span class="mt-0.5 text-xs">
-      <span v-if="step.status === 'running'" class="animate-spin inline-block">◐</span>
+    <span class="mt-0.5 text-xs flex-shrink-0">
+      <span v-if="step.status === 'running'" class="inline-block animate-pulse text-accent">◐</span>
       <span v-else-if="step.status === 'done'" class="text-green-600">●</span>
       <span v-else-if="step.status === 'failed'" class="text-red-500">●</span>
       <span v-else class="text-text-tertiary">○</span>
@@ -10,7 +10,11 @@
       <div class="flex items-center gap-2">
         <span class="text-xs font-medium text-text-primary">{{ actionLabel }}</span>
         <span v-if="step.durationMs" class="text-xs text-text-tertiary">{{ step.durationMs }}ms</span>
+        <span v-if="step.status === 'running'" class="text-xs text-text-tertiary">⟳</span>
+        <span v-if="step.status === 'done'" class="text-xs text-green-600">✓</span>
+        <span v-if="step.status === 'failed'" class="text-xs text-red-500">✗</span>
       </div>
+      <p v-if="step.reason && step.status === 'pending'" class="text-xs text-text-tertiary mt-0.5 truncate">{{ step.reason }}</p>
       <p v-if="step.outputSummary" class="text-xs text-text-secondary mt-0.5 truncate">{{ step.outputSummary }}</p>
     </div>
   </div>
@@ -30,6 +34,8 @@ const actionLabels: Record<string, string> = {
   retrieve_arxiv: 'arXiv 搜索',
   search_web: '网页搜索',
   evaluate_docs: '充分性评估',
+  get_paper_detail: '论文详情',
+  get_paper_chunks: '论文片段',
   reasoning_synthesis: '推理生成',
   self_reflection: '自我验证',
   re_planning: '重新规划',

@@ -39,6 +39,8 @@ class ChatResponse(BaseModel):
     answer: str
     sources: list[Source] = []
     used_chunks: int = 0
+    step_traces: Optional[list[dict]] = None
+    reflection_result: Optional[dict] = None
 
 
 class PaperSummary(BaseModel):

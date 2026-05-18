@@ -39,3 +39,5 @@ class AgentState(TypedDict):
     step_traces: list[StepTrace]
     reflection_count: int
     final_answer: Optional[str]
+    reflection_result: Optional[dict]
+    sources: Optional[list]

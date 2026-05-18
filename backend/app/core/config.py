@@ -70,6 +70,21 @@ class Settings(BaseSettings):
     # --- LLM ---
     llm_max_retries: int = 2
 
+    # --- Agent ---
+    agent_max_plan_steps: int = 7
+    agent_max_reflections: int = 2
+
+    # --- Tools: external APIs ---
+    tavily_api_key: Optional[str] = None
+    arxiv_max_results: int = 5
+
+    # --- Optional separate models for agent nodes ---
+    planner_model: Optional[str] = None
+    reflection_model: Optional[str] = None
+
+    # --- Chat history ---
+    chat_history_window: int = 10
+
     # --- Observability ---
     observability_json_logs: bool = True
 

@@ -1,12 +1,7 @@
-<script setup lang="ts">
-import { NConfigProvider, NMessageProvider, darkTheme } from 'naive-ui'
-import HomeView from './views/HomeView.vue'
-</script>
-
 <template>
-  <NConfigProvider :theme="darkTheme">
-    <NMessageProvider>
-      <HomeView />
-    </NMessageProvider>
-  </NConfigProvider>
+  <ChatLayout />
 </template>
+
+<script setup lang="ts">
+import ChatLayout from './layouts/ChatLayout.vue'
+</script>

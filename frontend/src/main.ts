@@ -1,8 +1,8 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
-import 'vfonts/Lato.css'
-import './assets/app.css'
+import './styles/tailwind.css'
+import './styles/base.css'
 
 const app = createApp(App)
 app.use(createPinia())

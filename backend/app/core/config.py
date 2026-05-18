@@ -73,6 +73,18 @@ class Settings(BaseSettings):
     # --- LLM ---
     llm_max_retries: int = 2
 
+    # --- Agent ---
+    agent_max_plan_steps: int = 7
+    agent_max_reflections: int = 2
+
+    # --- Tools: external APIs ---
+    tavily_api_key: Optional[str] = None
+    arxiv_max_results: int = 5
+
+    # --- Optional separate models for agent nodes ---
+    planner_model: Optional[str] = None
+    reflection_model: Optional[str] = None
+
     # --- Judge LLM (for eval, defaults to main LLM) ---
     judge_llm_model: Optional[str] = None
     judge_llm_api_base: Optional[str] = None

@@ -18,14 +18,27 @@ export function useChat() {
     try {
       for await (const event of streamChat(query, store.sessionId)) {
         switch (event.type) {
+          case 'intent':
+            // Intent received — agent has started analyzing
+            break
           case 'plan':
             thinking.startFromPlan(event.data)
+            break
+          case 'step_start':
+            thinking.markStepStart(event.data.index)
             break
           case 'step_done':
             thinking.markStepDone(event.data)
             break
           case 'reflection':
-            if (!event.data.passed) thinking.markFailed()
+            if (!event.data.passed) {
+              thinking.markFailed()
+            }
+            break
+          case 're_plan':
+            thinking.addExtraSteps(
+              (event.data.new_steps as { action: string; reason: string }[]) || []
+            )
             break
           case 'token':
             store.updateLastAssistant(
@@ -39,15 +52,17 @@ export function useChat() {
             )
             break
           case 'done':
-            thinking.isThinking.value = false
+            thinking.finish()
             break
           case 'error':
             store.updateLastAssistant(`Error: ${event.data.message}`)
+            thinking.markFailed()
             break
         }
       }
     } catch (e) {
       store.updateLastAssistant('连接中断，请重试。')
+      thinking.markFailed()
     } finally {
       store.isLoading = false
     }

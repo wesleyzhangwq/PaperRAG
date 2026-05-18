@@ -66,8 +66,11 @@ def reflection_node(state: AgentState, *, query: str) -> dict:
         duration_ms=duration,
     )
 
+    # Only increment reflection_count on failure (to track retry budget)
+    new_count = state["reflection_count"] if reflection["passed"] else state["reflection_count"] + 1
+
     return {
         "reflection_result": reflection,
-        "reflection_count": state["reflection_count"] + 1,
+        "reflection_count": new_count,
         "step_traces": state["step_traces"] + [trace],
     }

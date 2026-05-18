@@ -29,7 +29,8 @@ def _base_state(**overrides) -> AgentState:
 
 def test_synthesis_generates_answer():
     mock_llm = MagicMock()
-    mock_llm.invoke.return_value = MagicMock(content="Attention 机制允许模型捕获全局依赖 [arxiv:1706.03762]")
+    # synthesis uses llm.stream() which yields chunk objects
+    mock_llm.stream.return_value = [MagicMock(content="Attention 机制允许模型捕获全局依赖 [arxiv:1706.03762]")]
     state = _base_state()
     with patch("app.agent.nodes.synthesis._get_llm", return_value=mock_llm):
         result = synthesis_node(state, query="what is attention")

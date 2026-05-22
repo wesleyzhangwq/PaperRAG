@@ -18,6 +18,7 @@ def _get_llm(*, streaming: bool = False) -> ChatOpenAI:
         api_key=s.llm_api_key,
         temperature=0.2,
         max_retries=2,
+        request_timeout=120,
         streaming=streaming,
     )
 

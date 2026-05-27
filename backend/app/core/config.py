@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     chunk_min_chars: int = 80
     chunk_noise_symbol_ratio: float = 0.35
     chunk_drop_references: bool = False
-    retrieval_k: int = 8
+    retrieval_k: int = 12
     final_context_k: int = 3
 
     # --- Chat history ---
@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     # --- Hybrid retrieval (vector oversample + BM25 fusion / rerank) ---
     hybrid_retrieval_enabled: bool = True
     hybrid_oversample: float = 2.5
-    hybrid_alpha: float = 0.72
+    hybrid_alpha: float = 0.3
     hybrid_max_fetch: int = 64
 
     # --- Caching ---

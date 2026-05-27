@@ -1,0 +1,3 @@
+run_id,timestamp,total_time_s,count,count_with_expected,ndcg_5,precision_5,recall_5,mrr,latency_p50,latency_p90,latency_mean,ndcg_5_easy,mrr_easy,ndcg_5_medium,mrr_medium,ndcg_5_hard,mrr_hard
+retrieval-baseline,2026-05-26T08:42:33.103596+00:00,40.1,65,55,0.3325,0.3606,0.3258,0.3773,0.46,1.048,0.603,0.3889,0.3889,0.3596,0.3542,0.2042,0.4038
+optimized-v1,2026-05-26T08:56:41.825642+00:00,34.4,65,55,0.3497,0.3306,0.3411,0.3848,0.481,0.608,0.515,0.3889,0.3889,0.3596,0.3611,0.2771,0.4231

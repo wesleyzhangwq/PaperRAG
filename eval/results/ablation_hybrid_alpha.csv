@@ -1,0 +1,7 @@
+experiment,param,value,timestamp,count,ndcg_5,precision_5,recall_5,mrr,latency_p90,ctx_precision,tokens_per_request,mode_accuracy,ndcg_5_easy,mrr_easy,ndcg_5_medium,mrr_medium,ndcg_5_hard,mrr_hard
+hybrid_alpha,HYBRID_ALPHA,0.0,2026-05-26T04:22:34.826791+00:00,70,0.0167,0.0167,0.0167,0.0167,71.16,0.3714,827.5,0.0811,0.0,0.0,0.04,0.04,0.0,0.0
+hybrid_alpha,HYBRID_ALPHA,0.3,2026-05-26T04:32:12.877696+00:00,70,0.0,0.0,0.0,0.0,6.627,0.0,951.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+hybrid_alpha,HYBRID_ALPHA,0.5,2026-05-26T04:39:46.042041+00:00,70,0.0,0.0,0.0,0.0,6.485,,,,0.0,0.0,0.0,0.0,0.0,0.0
+hybrid_alpha,HYBRID_ALPHA,0.72,2026-05-26T04:47:15.596261+00:00,70,0.0,0.0,0.0,0.0,6.473,,,,0.0,0.0,0.0,0.0,0.0,0.0
+hybrid_alpha,HYBRID_ALPHA,0.85,2026-05-26T04:54:54.896453+00:00,70,0.0,0.0,0.0,0.0,6.729,,,,0.0,0.0,0.0,0.0,0.0,0.0
+hybrid_alpha,HYBRID_ALPHA,1.0,2026-05-26T05:02:35.695708+00:00,70,0.0,0.0,0.0,0.0,6.779,,,,0.0,0.0,0.0,0.0,0.0,0.0

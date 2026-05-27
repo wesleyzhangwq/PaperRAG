@@ -30,7 +30,8 @@ class ReflectionResult(TypedDict):
     fix_strategy: Optional[str]
 
 
-class AgentState(TypedDict):
+class AgentState(TypedDict, total=False):
+    # required core
     messages: Annotated[list, add_messages]
     intent: Optional[dict]
     plan: list[StepSpec]
@@ -41,3 +42,8 @@ class AgentState(TypedDict):
     final_answer: Optional[str]
     reflection_result: Optional[dict]
     sources: Optional[list]
+    # optional metadata (filled progressively for the presentation layer)
+    is_fallback: bool                       # any retrieve_local fell back to user query
+    evaluator_result: Optional[dict]        # latest evaluate_docs output
+    evaluator_parse_failed: bool            # short-cut flag for confidence calc
+    presentation: Optional[dict]            # final structured payload for the UI

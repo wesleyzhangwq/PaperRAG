@@ -7,6 +7,7 @@ from langchain_core.documents import Document
 from sqlalchemy.orm import Session
 
 from app.agent.state import AgentState, StepTrace
+from app.agent.streaming import emit
 from app.schemas.chat import ChatFilter
 from app.services.retriever import retrieve
 from app.tools.query_rewrite import rewrite_query
@@ -17,8 +18,30 @@ from app.tools.paper_detail import get_paper_detail
 from app.tools.paper_chunks import get_paper_chunks
 
 
-def _run_retrieve_local(params: dict) -> list[tuple[Document, float]]:
-    query = params.get("query", "")
+def _user_query_from_state(state: AgentState) -> str:
+    """Return the latest user message content (or empty string)."""
+    for msg in reversed(state.get("messages", [])):
+        if hasattr(msg, "type") and getattr(msg, "type", "") == "human":
+            return getattr(msg, "content", "") or ""
+        # Fallback for tuple-like
+        if isinstance(msg, tuple) and len(msg) == 2 and msg[0] == "user":
+            return msg[1] or ""
+    return ""
+
+
+def _run_retrieve_local(
+    params: dict, fallback_query: str
+) -> tuple[list[tuple[Document, float]], dict]:
+    """Run local retrieval, falling back to ``fallback_query`` when the planner
+    failed to supply one. Returns (docs_scores, meta)."""
+    requested_query = (params.get("query") or "").strip()
+    used_fallback = False
+    if not requested_query and fallback_query:
+        query_used = fallback_query
+        used_fallback = True
+    else:
+        query_used = requested_query
+
     top_k = params.get("top_k", 8)
     flt = None
     if params.get("category") or params.get("year_min") or params.get("year_max"):
@@ -27,11 +50,19 @@ def _run_retrieve_local(params: dict) -> list[tuple[Document, float]]:
             year_min=params.get("year_min"),
             year_max=params.get("year_max"),
         )
-    return retrieve(query, flt=flt, top_k=top_k)
+
+    docs = retrieve(query_used, flt=flt, top_k=top_k) if query_used else []
+    meta = {
+        "query_used": query_used,
+        "requested_query": requested_query,
+        "used_fallback": used_fallback,
+    }
+    return docs, meta
 
 
-def _run_query_rewrite(params: dict, intent: dict) -> list[str]:
-    return rewrite_query(params.get("original_query", ""), intent)
+def _run_query_rewrite(params: dict, intent: dict, fallback_query: str) -> list[str]:
+    original = (params.get("original_query") or "").strip() or fallback_query
+    return rewrite_query(original, intent)
 
 
 def _run_evaluate_docs(params: dict, query: str, context: list[Document]) -> dict:
@@ -46,7 +77,6 @@ def _parse_arxiv_to_documents(raw_result: str) -> list[Document]:
         block = block.strip()
         if not block:
             continue
-        # Extract paper_id from the text (format: "ID: xxxx.xxxxx")
         paper_id = ""
         title = ""
         lines = block.split("\n")
@@ -67,7 +97,6 @@ def _parse_arxiv_to_documents(raw_result: str) -> list[Document]:
 
 
 def _parse_web_to_documents(raw_result: str) -> list[Document]:
-    """Parse web search tool output into Document objects for context."""
     docs = []
     for block in raw_result.split("---"):
         block = block.strip()
@@ -85,35 +114,78 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
     idx = state["plan_step_index"]
     step = state["plan"][idx]
     action = step["action"]
-    params = step["params"]
+    params = dict(step.get("params") or {})
+    fallback_query = _user_query_from_state(state)
+
+    emit("tool_call", {
+        "index": idx,
+        "action": action,
+        "params": params,
+        "reason": step.get("reason", ""),
+    })
 
     t0 = time.perf_counter()
-    new_context = list(state["retrieval_context"])
+    new_context = list(state.get("retrieval_context", []))
     output_summary = ""
-    # Additional plan steps to append (e.g. from evaluate_docs)
-    extra_plan_steps = []
+    output_detail: dict = {}
+    extra_plan_steps: list[dict] = []
+    state_patch: dict = {}
 
     if action == "retrieve_local":
-        docs_scores = _run_retrieve_local(params)
+        docs_scores, meta = _run_retrieve_local(params, fallback_query)
         new_context.extend([d for d, _ in docs_scores])
-        output_summary = f"found {len(docs_scores)} chunks"
+        output_summary = (
+            f"found {len(docs_scores)} chunks"
+            + (" (fallback)" if meta["used_fallback"] else "")
+        )
+        hits = []
+        for d, score in docs_scores[:5]:
+            md = d.metadata or {}
+            hits.append({
+                "paper_id": md.get("paper_id", ""),
+                "title": (md.get("title") or "")[:120],
+                "score": round(float(score), 4),
+                "snippet": (d.page_content or "")[:200],
+            })
+        output_detail = {
+            "hits": hits,
+            "total": len(docs_scores),
+            "query_used": meta["query_used"],
+            "requested_query": meta["requested_query"],
+            "used_fallback": meta["used_fallback"],
+        }
+        if meta["used_fallback"]:
+            state_patch["is_fallback"] = True
 
     elif action == "retrieve_arxiv":
         result = retrieve_arxiv_tool.invoke(params)
         arxiv_docs = _parse_arxiv_to_documents(result)
         new_context.extend(arxiv_docs)
-        output_summary = f"arXiv: {len(arxiv_docs)} papers added to context"
+        output_summary = f"arXiv: {len(arxiv_docs)} papers added"
+        output_detail = {
+            "papers": [
+                {"paper_id": (d.metadata or {}).get("paper_id", ""),
+                 "title": (d.metadata or {}).get("title", "")[:120]}
+                for d in arxiv_docs[:5]
+            ],
+            "total": len(arxiv_docs),
+        }
 
     elif action == "search_web":
         result = search_web_tool.invoke(params)
         web_docs = _parse_web_to_documents(result)
         new_context.extend(web_docs)
-        output_summary = f"web: {len(web_docs)} results added to context"
+        output_summary = f"web: {len(web_docs)} results added"
+        output_detail = {
+            "snippets": [(d.page_content or "")[:200] for d in web_docs[:3]],
+            "total": len(web_docs),
+        }
 
     elif action == "query_rewrite":
-        intent = state["intent"] or {}
-        queries = _run_query_rewrite(params, intent)
-        output_summary = f"rewrote into {len(queries)} sub-queries: {queries}"
+        intent = state.get("intent") or {}
+        queries = _run_query_rewrite(params, intent, fallback_query)
+        output_summary = f"rewrote into {len(queries)} sub-queries"
+        output_detail = {"queries": queries}
         # Inject rewritten queries into subsequent retrieve_local steps
         remaining_plan = list(state["plan"][idx + 1:])
         for plan_step in remaining_plan:
@@ -122,34 +194,45 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
                     plan_step["params"] = {**plan_step["params"], "query": queries.pop(0)}
 
     elif action == "evaluate_docs":
-        query = params.get("query", "")
-        if not query:
-            for msg in reversed(state["messages"]):
-                if hasattr(msg, "content") and msg.content:
-                    query = msg.content
-                    break
+        query = (params.get("query") or "").strip() or fallback_query
         eval_result = _run_evaluate_docs(params, query, new_context)
-        sufficient = eval_result.get("sufficient", True)
-        output_summary = f"sufficient={sufficient}"
-        # If not sufficient, inject supplementary retrieval before synthesis
-        if not sufficient:
+        sufficient = bool(eval_result.get("sufficient"))
+        parse_failed = bool(eval_result.get("parse_failed"))
+        output_summary = (
+            "evaluator_parse_failed"
+            if parse_failed else f"sufficient={sufficient}"
+        )
+        output_detail = {
+            "sufficient": sufficient,
+            "missing_aspects": eval_result.get("missing_aspects", []),
+            "reason": eval_result.get("reason", ""),
+            "parse_failed": parse_failed,
+            "raw_preview": eval_result.get("raw", ""),
+        }
+        state_patch["evaluator_result"] = eval_result
+        if parse_failed:
+            state_patch["evaluator_parse_failed"] = True
+        # If actually insufficient (and parser did succeed), inject supplementary retrieval
+        if (not sufficient) and not parse_failed:
             missing = eval_result.get("missing_aspects", [])
-            output_summary += f", missing: {missing}"
-            # Add extra retrieval steps for missing aspects
-            for aspect in missing[:2]:  # limit to 2 extra retrievals
-                extra_plan_steps.append({
-                    "action": "retrieve_local",
-                    "params": {"query": aspect, "top_k": 4},
-                    "reason": f"supplement: {aspect}",
-                })
+            if missing:
+                output_summary += f", missing: {len(missing)} aspects"
+                for aspect in missing[:2]:
+                    extra_plan_steps.append({
+                        "action": "retrieve_local",
+                        "params": {"query": aspect, "top_k": 4},
+                        "reason": f"supplement: {aspect}",
+                    })
 
     elif action == "get_paper_detail":
         result = get_paper_detail(db, params.get("paper_id", ""))
         output_summary = "paper detail retrieved"
+        output_detail = {"preview": (str(result) or "")[:300]}
 
     elif action == "get_paper_chunks":
         result = get_paper_chunks(db, params.get("paper_id", ""), params.get("max_chunks", 10))
         output_summary = "chunks retrieved"
+        output_detail = {"preview": (str(result) or "")[:300]}
 
     else:
         output_summary = f"unknown action: {action}"
@@ -162,21 +245,26 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
         output_summary=output_summary,
         duration_ms=duration,
     )
+    emit("tool_result", {
+        "index": idx,
+        "action": action,
+        "duration_ms": duration,
+        "detail": output_detail,
+        "summary": output_summary,
+    })
 
-    # Build updated plan if extra steps were injected
     updated_plan = state["plan"]
     if extra_plan_steps:
         updated_plan = list(state["plan"])
-        # Insert extra steps right after current step
         for i, extra in enumerate(extra_plan_steps):
             updated_plan.insert(idx + 1 + i, extra)
 
-    result = {
+    result: dict = {
         "plan_step_index": idx + 1,
         "retrieval_context": new_context,
         "step_traces": state["step_traces"] + [trace],
     }
     if extra_plan_steps:
         result["plan"] = updated_plan
-
+    result.update(state_patch)
     return result

@@ -1,13 +1,64 @@
 """Reasoning synthesis node: generate cited answer from context."""
 from __future__ import annotations
 
+import re
 import time
 
 from langchain_openai import ChatOpenAI
 
 from app.agent.prompts.synthesis import SYNTHESIS_PROMPT, SYNTHESIS_WITH_ISSUES_PROMPT
 from app.agent.state import AgentState, StepTrace
+from app.agent.streaming import emit
 from app.core.config import get_settings
+
+# Reasoning models (e.g. MiniMax-M2.7) sometimes leak <think>...</think> blocks
+# into the user-visible answer. Strip them after generation so they don't
+# pollute the markdown output — the live reasoning_token events still expose
+# them in the dedicated "model thinking" panel.
+_THINK_BLOCK_RE = re.compile(r"<think>[\s\S]*?</think>", re.IGNORECASE)
+_THINK_OPEN_RE = re.compile(r"<think>[\s\S]*$", re.IGNORECASE)  # unclosed tag tail
+
+
+def _strip_think(text: str) -> str:
+    if not text:
+        return text
+    text = _THINK_BLOCK_RE.sub("", text)
+    text = _THINK_OPEN_RE.sub("", text)
+    return text.lstrip("\n").rstrip()
+
+
+def _route_token(token: str, in_think: bool, reasoning_bucket: list[str]) -> tuple[str, bool]:
+    """Split a streaming token into the answer (returned) and reasoning bucket
+    (appended), handling <think>/</think> tag boundaries inline.
+    Returns (answer_part, new_in_think_state)."""
+    if not token:
+        return "", in_think
+    out: list[str] = []
+    i = 0
+    while i < len(token):
+        if in_think:
+            close = token.lower().find("</think>", i)
+            if close == -1:
+                # whole remainder is reasoning
+                reasoning_bucket.append(token[i:])
+                # emit live reasoning event so the panel still updates
+                emit("reasoning_token", {"t": token[i:]})
+                i = len(token)
+            else:
+                reasoning_bucket.append(token[i:close])
+                emit("reasoning_token", {"t": token[i:close]})
+                i = close + len("</think>")
+                in_think = False
+        else:
+            open_ = token.lower().find("<think>", i)
+            if open_ == -1:
+                out.append(token[i:])
+                i = len(token)
+            else:
+                out.append(token[i:open_])
+                i = open_ + len("<think>")
+                in_think = True
+    return "".join(out), in_think
 
 
 def _get_llm(*, streaming: bool = False) -> ChatOpenAI:
@@ -41,8 +92,8 @@ def _format_context(state: AgentState) -> str:
 def synthesis_node(state: AgentState, *, query: str, issues: list[str] | None = None) -> dict:
     """Generate a cited answer from accumulated retrieval context.
 
-    Uses streaming internally for token-by-token generation (consumed by SSE
-    when called via graph.stream()). Falls back to invoke for sync calls.
+    Streams tokens live into the SSE queue (if one is bound) via ``emit('token', ...)``
+    so the frontend can render token-by-token without waiting for the node to finish.
     """
     t0 = time.perf_counter()
     llm = _get_llm(streaming=True)
@@ -55,19 +106,34 @@ def synthesis_node(state: AgentState, *, query: str, issues: list[str] | None = 
     else:
         prompt = SYNTHESIS_PROMPT.format(query=query, context=context)
 
-    # Use streaming to collect tokens (future: yield tokens via callback for SSE)
-    chunks = []
+    chunks: list[str] = []
+    reasoning_chunks: list[str] = []
+    in_think = False  # state machine for inline <think>...</think> blocks
     for chunk in llm.stream(prompt):
+        # Reasoning models (e.g. MiniMax-M2.7) may expose reasoning tokens
+        # via additional_kwargs.reasoning_content (incremental, OpenAI-style).
+        rk = getattr(chunk, "additional_kwargs", None) or {}
+        rtok = rk.get("reasoning_content") if isinstance(rk, dict) else None
+        if rtok:
+            reasoning_chunks.append(rtok)
+            emit("reasoning_token", {"t": rtok})
         if chunk.content:
             chunks.append(chunk.content)
-    answer = "".join(chunks)
+            # Route inline <think>...</think> tokens to reasoning, not answer.
+            stripped, in_think = _route_token(chunk.content, in_think, reasoning_chunks)
+            if stripped:
+                emit("token", {"t": stripped})
+
+    answer = _strip_think("".join(chunks))
 
     duration = round((time.perf_counter() - t0) * 1000, 2)
     trace = StepTrace(
         node="synthesis_node",
         action="reasoning_synthesis",
         input_summary=f"{len(state['retrieval_context'])} chunks as context",
-        output_summary=f"generated {len(answer)} chars",
+        output_summary=f"generated {len(answer)} chars" + (
+            f" (+{sum(len(r) for r in reasoning_chunks)} reasoning chars)" if reasoning_chunks else ""
+        ),
         duration_ms=duration,
     )
     return {

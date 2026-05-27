@@ -1,34 +1,60 @@
 <template>
-  <div ref="listRef" class="flex-1 overflow-y-auto px-4 py-6 space-y-4">
-    <template v-for="(msg, idx) in messages" :key="msg.id">
-      <UserBubble v-if="msg.role === 'user'" :content="msg.content" />
-      <template v-else>
-        <ThinkingCard v-if="idx === messages.length - 1 && (thinking.isThinking.value || thinking.steps.value.length > 0)" :steps="thinking.steps.value" />
-        <AssistantBubble :content="msg.content" :sources="msg.sources" />
+  <div ref="listRef" class="flex-1 overflow-y-auto px-4 py-6">
+    <div class="max-w-3xl mx-auto space-y-5">
+      <div v-if="messages.length === 0" class="text-center py-20 text-text-tertiary text-sm">
+        发送一条消息开始对话吧～
+      </div>
+
+      <template v-for="msg in messages" :key="msg.id">
+        <UserBubble v-if="msg.role === 'user'" :content="msg.content" />
+        <div v-else class="space-y-3">
+          <!-- ① While streaming: show live progress card -->
+          <ThinkingCard
+            v-if="msg.pending"
+            :steps="msg.thinking || []"
+            :tool-calls="msg.toolCalls || []"
+            :tool-results="msg.toolResults || []"
+            :elapsed-ms="msg.elapsedMs || 0"
+            :running="true"
+          />
+          <!-- Optional: reasoning trace (model's internal thinking, collapsed by default) -->
+          <ReasoningBlock
+            v-if="msg.reasoning && msg.reasoning.length > 0"
+            :reasoning="msg.reasoning"
+            :running="!!msg.pending"
+          />
+          <!-- ② Once content arrives (or presentation), show the structured AnswerCard -->
+          <AnswerCard
+            v-if="msg.content || msg.presentation || !msg.pending"
+            :content="msg.content"
+            :sources="msg.sources"
+            :presentation="msg.presentation"
+            :streaming="!!msg.pending"
+          />
+        </div>
       </template>
-    </template>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watchEffect, nextTick } from 'vue'
-import type { Message, ThinkingStep } from '../../types'
+import { ref, watch, nextTick } from 'vue'
+import type { Message } from '../../types'
 import UserBubble from './UserBubble.vue'
-import AssistantBubble from './AssistantBubble.vue'
 import ThinkingCard from './ThinkingCard.vue'
+import ReasoningBlock from './ReasoningBlock.vue'
+import AnswerCard from '../answer/AnswerCard.vue'
 
-const props = defineProps<{
-  messages: Message[]
-  thinking: { steps: { value: ThinkingStep[] }; isThinking: { value: boolean } }
-}>()
+const props = defineProps<{ messages: Message[] }>()
 
 const listRef = ref<HTMLElement>()
 
-watchEffect(async () => {
-  props.messages.length
-  await nextTick()
-  if (listRef.value) {
-    listRef.value.scrollTop = listRef.value.scrollHeight
-  }
-})
+watch(
+  () => [props.messages.length, props.messages[props.messages.length - 1]?.content],
+  async () => {
+    await nextTick()
+    if (listRef.value) listRef.value.scrollTop = listRef.value.scrollHeight
+  },
+  { immediate: true },
+)
 </script>

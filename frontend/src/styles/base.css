@@ -1,18 +1,48 @@
+/* Light theme (default) */
 :root {
   --bg-primary: #FAF9F7;
   --bg-secondary: #F5F4F0;
   --bg-card: #FFFFFF;
+  --bg-hover: #EFEDE8;
   --text-primary: #1A1A1A;
   --text-secondary: #6B6560;
   --text-tertiary: #9B9590;
   --accent: #D97706;
   --accent-light: #FEF3C7;
   --border: #E8E5E0;
-  --shadow: 0 1px 3px rgba(0,0,0,0.04);
+  --ok: #16A34A;
+  --warn: #D97706;
+  --bad: #DC2626;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.04);
+  --shadow-popover: 0 4px 16px rgba(0,0,0,0.08);
   --radius: 12px;
   --radius-sm: 8px;
   --font-sans: -apple-system, 'Inter', sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  color-scheme: light;
+}
+
+/* Dark theme — activated by .dark on <html> */
+:root.dark,
+:root[data-theme="dark"] {
+  --bg-primary: #0F0F11;
+  --bg-secondary: #17171A;
+  --bg-card: #1C1C20;
+  --bg-hover: #25252A;
+  --text-primary: #ECECF1;
+  --text-secondary: #B4B4BD;
+  --text-tertiary: #7A7A85;
+  --accent: #F59E0B;
+  --accent-light: #3F2E14;
+  --border: #2A2A30;
+  --ok: #4ADE80;
+  --warn: #FBBF24;
+  --bad: #F87171;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-popover: 0 6px 24px rgba(0,0,0,0.5);
+
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -22,7 +52,14 @@ body {
   color: var(--text-primary);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.18s ease, color 0.18s ease;
 }
+
+/* Custom scrollbar that adapts to theme */
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+*::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
 
 /* Markdown code blocks */
 .prose code {
@@ -38,8 +75,34 @@ body {
   border-radius: var(--radius-sm);
   padding: 0.75rem 1rem;
   overflow-x: auto;
+  color: var(--text-primary);
 }
-.prose pre code {
-  background: none;
-  padding: 0;
+.prose pre code { background: none; padding: 0; }
+
+.prose a { color: var(--accent); text-decoration: underline; }
+.prose strong { color: var(--text-primary); }
+.prose blockquote {
+  border-left: 3px solid var(--border);
+  padding-left: 0.8em;
+  color: var(--text-secondary);
+}
+
+/* Cursor blink for streaming */
+.cursor-blink::after {
+  content: '▍';
+  display: inline-block;
+  margin-left: 1px;
+  color: var(--accent);
+  animation: blink 1s steps(1) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+/* Reasoning (thinking-out-loud) block, small & subdued */
+.reasoning-block {
+  font-size: 0.78rem;
+  color: var(--text-tertiary);
+  line-height: 1.55;
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
 }

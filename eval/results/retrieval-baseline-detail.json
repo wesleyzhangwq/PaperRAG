@@ -1,0 +1,1521 @@
+{
+  "run_id": "retrieval-baseline",
+  "timestamp": "2026-05-26T08:42:33.104130+00:00",
+  "metrics": {
+    "count": 65,
+    "count_with_expected": 55,
+    "ndcg_5": 0.3325,
+    "precision_5": 0.3606,
+    "recall_5": 0.3258,
+    "mrr": 0.3773,
+    "latency_p50": 0.46,
+    "latency_p90": 1.048,
+    "latency_mean": 0.603
+  },
+  "breakdown": {
+    "d_easy": {
+      "count": 22,
+      "ndcg_5": 0.3889,
+      "precision_5": 0.3889,
+      "recall_5": 0.3889,
+      "mrr": 0.3889
+    },
+    "d_hard": {
+      "count": 17,
+      "ndcg_5": 0.2042,
+      "precision_5": 0.3526,
+      "recall_5": 0.1475,
+      "mrr": 0.4038
+    },
+    "d_medium": {
+      "count": 26,
+      "ndcg_5": 0.3596,
+      "precision_5": 0.3438,
+      "recall_5": 0.375,
+      "mrr": 0.3542
+    },
+    "t_comparison": {
+      "count": 8,
+      "ndcg_5": 0.1533,
+      "precision_5": 0.1667,
+      "recall_5": 0.125,
+      "mrr": 0.25
+    },
+    "t_concept_locate": {
+      "count": 18,
+      "ndcg_5": 0.3889,
+      "precision_5": 0.3889,
+      "recall_5": 0.3889,
+      "mrr": 0.3889
+    },
+    "t_fact_extract": {
+      "count": 10,
+      "ndcg_5": 0.2631,
+      "precision_5": 0.225,
+      "recall_5": 0.3,
+      "mrr": 0.25
+    },
+    "t_method_detail": {
+      "count": 14,
+      "ndcg_5": 0.4286,
+      "precision_5": 0.4286,
+      "recall_5": 0.4286,
+      "mrr": 0.4286
+    },
+    "t_negative": {
+      "count": 10,
+      "ndcg_5": 0,
+      "precision_5": 0,
+      "recall_5": 0,
+      "mrr": 0
+    },
+    "t_trend_synthesis": {
+      "count": 5,
+      "ndcg_5": 0.2858,
+      "precision_5": 0.65,
+      "recall_5": 0.1836,
+      "mrr": 0.65
+    }
+  },
+  "per_question": [
+    {
+      "qid": "c001",
+      "query": "如何通过模型与任务的协同进化机制，在单次训练中自动挖掘大型语言模型的新颖能力？",
+      "difficulty": "easy",
+      "type": "concept_locate",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.14969"
+      ],
+      "predicted_pids": [
+        "2604.15306",
+        "2604.15148",
+        "2604.15302"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.651,
+      "is_negative": false
+    },
+    {
+      "qid": "c002",
+      "query": "如何通过模型内部信号实现步骤级验证来优化多步推理中的推测解码效率？",
+      "difficulty": "easy",
+      "type": "concept_locate",
+      "ndcg": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "rr": 1.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15244"
+      ],
+      "predicted_pids": [
+        "2604.15244"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.897,
+      "is_negative": false
+    },
+    {
+      "qid": "c003",
+      "query": "在表格数据的监督学习中，Muon优化器训练MLP模型相比AdamW等传统优化器是否能够显著提升性能？",
+      "difficulty": "easy",
+      "type": "concept_locate",
+      "ndcg": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "rr": 1.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15297"
+      ],
+      "predicted_pids": [
+        "2604.15297"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.443,
+      "is_negative": false
+    },
+    {
+      "qid": "c004",
+      "query": "大语言模型处理长上下文时，其Query和Key向量中的高幅度激活模式能否被用于改进强化学习训练？",
+      "difficulty": "easy",
+      "type": "concept_locate",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.14922"
+      ],
+      "predicted_pids": [
+        "2604.15148",
+        "2604.15306"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.434,
+      "is_negative": false
+    },
+    {
+      "qid": "c006",
+      "query": "如何让AI智能体在没有预训练的情况下自动生成包含运动部件的复杂三维CAD装配模型？",
+      "difficulty": "easy",
+      "type": "concept_locate",
+      "ndcg": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "rr": 1.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15184"
+      ],
+      "predicted_pids": [
+        "2604.15184"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.499,
+      "is_negative": false
+    },
+    {
+      "qid": "c007",
+      "query": "O2O平台如何通过策略引导的双过程混合模拟来同时解决用户模拟中的信息不完整和过度理性化问题，从而实现商家业务诊断？",
+      "difficulty": "easy",
+      "type": "concept_locate",
+      "ndcg": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "rr": 1.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15190"
+      ],
+      "predicted_pids": [
+        "2604.15190"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.404,
+      "is_negative": false
+    },
+    {
+      "qid": "c008",
+      "query": "在具有自主规划、记忆和工具使用能力的AI智能体系统中，如何从群体层面分析和防范由多个智能体间通信、观察与相互影响引发的安全风险？",
+      "difficulty": "easy",
+      "type": "concept_locate",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15236"
+      ],
+      "predicted_pids": [
+        "2604.15224",
+        "2604.15231",
+        "2604.15294",
+        "2604.15148",
+        "2604.15124"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.967,
+      "is_negative": false
+    },
+    {
+      "qid": "c009",
+      "query": "循环神经网络在测试时通过增加迭代次数扩展计算时，如何从不动点的角度分析其泛化能力和稳定性？",
+      "difficulty": "easy",
+      "type": "concept_locate",
+      "ndcg": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "rr": 1.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15259"
+      ],
+      "predicted_pids": [
+        "2604.15259"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.542,
+      "is_negative": false
+    },
+    {
+      "qid": "c010",
+      "query": "如何通过贝叶斯Tucker分解并假设残差服从高斯分布来实现无监督特征选择？",
+      "difficulty": "easy",
+      "type": "concept_locate",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.14949"
+      ],
+      "predicted_pids": [
+        "2604.15181",
+        "2604.15259",
+        "2604.15203",
+        "2604.15174",
+        "2604.15297"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.42,
+      "is_negative": false
+    },
+    {
+      "qid": "c011",
+      "query": "针对嵌入式脑机接口系统的资源限制，如何从大型EEG基础模型中提取并迁移知识以实现高效压缩，同时避免表征崩溃和信号混叠？",
+      "difficulty": "easy",
+      "type": "concept_locate",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15016"
+      ],
+      "predicted_pids": [
+        "2604.15153",
+        "2604.15174",
+        "2604.15180"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.415,
+      "is_negative": false
+    },
+    {
+      "qid": "c013",
+      "query": "如何在真实RTL设计中利用基于大型语言模型的自主智能体和工具驱动的自我改进机制实现时序优化？",
+      "difficulty": "easy",
+      "type": "concept_locate",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.14989"
+      ],
+      "predicted_pids": [
+        "2604.15306",
+        "2604.15184",
+        "2604.15231",
+        "2604.15148",
+        "2604.15309"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.467,
+      "is_negative": false
+    },
+    {
+      "qid": "c014",
+      "query": "该论文如何利用boosting和排序近似技术，使排序学习模型能够同时适应NDCG、MAP等多种评估指标，而无需针对每个指标单独训练？",
+      "difficulty": "easy",
+      "type": "concept_locate",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15101"
+      ],
+      "predicted_pids": [
+        "2604.15210",
+        "2604.15148",
+        "2604.15190",
+        "2604.15302",
+        "2604.15180"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 1.652,
+      "is_negative": false
+    },
+    {
+      "qid": "c015",
+      "query": "当模型只能处理文本而无法获取视觉信息时，它们是否仍能理解三维空间中的视角变换，其背后的认知机制是什么？",
+      "difficulty": "easy",
+      "type": "concept_locate",
+      "ndcg": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "rr": 1.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15294"
+      ],
+      "predicted_pids": [
+        "2604.15294"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 1.242,
+      "is_negative": false
+    },
+    {
+      "qid": "c016",
+      "query": "如何针对强化学习策略的黑箱特性和训练-部署分布偏移问题，对安全关键系统进行系统化的危害识别？",
+      "difficulty": "easy",
+      "type": "concept_locate",
+      "ndcg": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "rr": 1.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15201"
+      ],
+      "predicted_pids": [
+        "2604.15201"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.505,
+      "is_negative": false
+    },
+    {
+      "qid": "c017",
+      "query": "视觉-语言模型如何自动找到视觉token剪枝的最优配置以实现计算预算与模型性能的帕累托最优平衡？",
+      "difficulty": "easy",
+      "type": "concept_locate",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15188"
+      ],
+      "predicted_pids": [
+        "2604.15153",
+        "2604.15210",
+        "2604.15294"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.473,
+      "is_negative": false
+    },
+    {
+      "qid": "c018",
+      "query": "有哪些新工具可以提供 NumPy 与 JAX 双后端的网格模拟环境，以降低人类‑AI 协同多智能体实验的技术门槛？",
+      "difficulty": "easy",
+      "type": "concept_locate",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15044"
+      ],
+      "predicted_pids": [
+        "2604.15259",
+        "2604.15233",
+        "2604.15121",
+        "2604.15184",
+        "2604.15231"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.445,
+      "is_negative": false
+    },
+    {
+      "qid": "c019",
+      "query": "在企业大规模应用agentic AI的场景下，如何解决智能体之间通信和编排过程中的可观测性问题？",
+      "difficulty": "easy",
+      "type": "concept_locate",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.14984"
+      ],
+      "predicted_pids": [
+        "2604.15233",
+        "2604.15231",
+        "2604.15151",
+        "2604.15184"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.41,
+      "is_negative": false
+    },
+    {
+      "qid": "c020",
+      "query": "如何通过混合专家机制改进流匹配模型在语言建模中处理复杂潜在分布的能力？",
+      "difficulty": "easy",
+      "type": "concept_locate",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15009"
+      ],
+      "predicted_pids": [
+        "2604.15148",
+        "2604.15190",
+        "2604.15109",
+        "2604.15306",
+        "2604.15203"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.474,
+      "is_negative": false
+    },
+    {
+      "qid": "m001",
+      "query": "IG-Search中信息增益(IG)奖励的具体计算方式是什么？",
+      "difficulty": "medium",
+      "type": "method_detail",
+      "ndcg": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "rr": 1.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15148"
+      ],
+      "predicted_pids": [
+        "2604.15148"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.668,
+      "is_negative": false
+    },
+    {
+      "qid": "m002",
+      "query": "论文中扩散模型训练采用的目标函数是什么？",
+      "difficulty": "medium",
+      "type": "method_detail",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15171"
+      ],
+      "predicted_pids": [
+        "2604.15297",
+        "2604.15153",
+        "2604.15259",
+        "2604.15210",
+        "2604.15231"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.454,
+      "is_negative": false
+    },
+    {
+      "qid": "m003",
+      "query": "RadAgent如何根据诊断需求选择并调用外部工具？",
+      "difficulty": "medium",
+      "type": "method_detail",
+      "ndcg": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "rr": 1.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15231"
+      ],
+      "predicted_pids": [
+        "2604.15231"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.43,
+      "is_negative": false
+    },
+    {
+      "qid": "m004",
+      "query": "RL-STPA框架在进行层级子任务分解时具体采用了哪两种技术方法？",
+      "difficulty": "medium",
+      "type": "method_detail",
+      "ndcg": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "rr": 1.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15201"
+      ],
+      "predicted_pids": [
+        "2604.15201"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 1.157,
+      "is_negative": false
+    },
+    {
+      "qid": "m005",
+      "query": "LtHate语料库的数据来源是什么？",
+      "difficulty": "medium",
+      "type": "method_detail",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.14907"
+      ],
+      "predicted_pids": [
+        "2604.14970"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.525,
+      "is_negative": false
+    },
+    {
+      "qid": "m006",
+      "query": "论文中提出的固定点（fixed-point）框架从哪三个维度（或轴）来分析循环Transformer架构的稳定性？",
+      "difficulty": "medium",
+      "type": "method_detail",
+      "ndcg": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "rr": 1.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15259"
+      ],
+      "predicted_pids": [
+        "2604.15259"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.508,
+      "is_negative": false
+    },
+    {
+      "qid": "m007",
+      "query": "论文中证明克隆和学习对于稳定子态具有相同难度时，使用了什么关键技术来建立两者样本复杂度之间的联系？",
+      "difficulty": "medium",
+      "type": "method_detail",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15269"
+      ],
+      "predicted_pids": [
+        "2604.15121",
+        "2604.15306",
+        "2604.15259",
+        "2604.15273"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.44,
+      "is_negative": false
+    },
+    {
+      "qid": "m008",
+      "query": "SRMU模型中的相关门控（Relevance-Gated）更新机制具体是如何实现的？",
+      "difficulty": "medium",
+      "type": "method_detail",
+      "ndcg": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "rr": 1.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15121"
+      ],
+      "predicted_pids": [
+        "2604.15121"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.393,
+      "is_negative": false
+    },
+    {
+      "qid": "m009",
+      "query": "CoopEval基准测试评估了哪些类型的博弈机制来促进LLM智能体之间的合作？",
+      "difficulty": "medium",
+      "type": "method_detail",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15267"
+      ],
+      "predicted_pids": [
+        "2604.15231",
+        "2604.15224",
+        "2604.15302"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.504,
+      "is_negative": false
+    },
+    {
+      "qid": "m010",
+      "query": "该研究使用的是什么物种的单细胞转录组数据来提取基因调控规则？",
+      "difficulty": "medium",
+      "type": "method_detail",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15143"
+      ],
+      "predicted_pids": [
+        "2604.15306",
+        "2604.15210",
+        "2604.15180"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.47,
+      "is_negative": false
+    },
+    {
+      "qid": "m011",
+      "query": "论文中提出的评估科学新颖性指标的公理（Axioms）具体包括哪些性质？",
+      "difficulty": "medium",
+      "type": "method_detail",
+      "ndcg": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "rr": 1.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15145"
+      ],
+      "predicted_pids": [
+        "2604.15145"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.489,
+      "is_negative": false
+    },
+    {
+      "qid": "m012",
+      "query": "论文中提到的'Agent Sprawl'现象具体指的是什么？",
+      "difficulty": "medium",
+      "type": "method_detail",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.14984"
+      ],
+      "predicted_pids": [
+        "2604.15231",
+        "2604.15184",
+        "2604.15233"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.388,
+      "is_negative": false
+    },
+    {
+      "qid": "m014",
+      "query": "AD4AD基准测试使用了哪些数据集来评估视觉异常检测模型？",
+      "difficulty": "medium",
+      "type": "method_detail",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15291"
+      ],
+      "predicted_pids": [
+        "2604.15174",
+        "2604.15203",
+        "2604.15180",
+        "2604.15224",
+        "2604.15231"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.45,
+      "is_negative": false
+    },
+    {
+      "qid": "m015",
+      "query": "论文提出的动态注意力机制是如何帮助稀疏自编码器解决神经元激活稀疏度难以最优设定的问题的？",
+      "difficulty": "medium",
+      "type": "method_detail",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.14925"
+      ],
+      "predicted_pids": [
+        "2604.15180"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.442,
+      "is_negative": false
+    },
+    {
+      "qid": "f001",
+      "query": "该论文提出的混合方法将大型语言模型与哪三个新创建的组件相结合？",
+      "difficulty": "medium",
+      "type": "fact_extract",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.14970"
+      ],
+      "predicted_pids": [
+        "2604.15148",
+        "2604.15203",
+        "2604.15306",
+        "2604.15109",
+        "2604.15145"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.423,
+      "is_negative": false
+    },
+    {
+      "qid": "f002",
+      "query": "实验部分在哪些基准 MDP 环境中对所提方法进行了评估？",
+      "difficulty": "medium",
+      "type": "fact_extract",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.14974"
+      ],
+      "predicted_pids": [
+        "2604.15174",
+        "2604.15148",
+        "2604.15259",
+        "2604.15306",
+        "2604.15121"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.437,
+      "is_negative": false
+    },
+    {
+      "qid": "f003",
+      "query": "DiscoTrace方法在多少个人类社区的答案上进行了应用和分析？",
+      "difficulty": "medium",
+      "type": "fact_extract",
+      "ndcg": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "rr": 1.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15140"
+      ],
+      "predicted_pids": [
+        "2604.15140"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.431,
+      "is_negative": false
+    },
+    {
+      "qid": "f004",
+      "query": "论文将基于基础模型（Foundation Model）的电力系统动态轨迹预测方法与哪些具体的基线方法进行了对比实验？",
+      "difficulty": "medium",
+      "type": "fact_extract",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.14991"
+      ],
+      "predicted_pids": [
+        "2604.15181",
+        "2604.15174",
+        "2604.15203",
+        "2604.15190",
+        "2604.15121"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.439,
+      "is_negative": false
+    },
+    {
+      "qid": "f005",
+      "query": "论文使用哪个数据集来评估其提出的IRS框架的性能？",
+      "difficulty": "medium",
+      "type": "fact_extract",
+      "ndcg": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "rr": 1.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15210"
+      ],
+      "predicted_pids": [
+        "2604.15210"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.42,
+      "is_negative": false
+    },
+    {
+      "qid": "f006",
+      "query": "论文在模拟实验中使用了哪些基准量子纠错码来与所提出的方法进行比较？",
+      "difficulty": "medium",
+      "type": "fact_extract",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.14931"
+      ],
+      "predicted_pids": [
+        "2604.15273"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.401,
+      "is_negative": false
+    },
+    {
+      "qid": "f007",
+      "query": "这篇论文的实验在哪些图分类数据集上进行了评估？",
+      "difficulty": "medium",
+      "type": "fact_extract",
+      "ndcg": 0.6309,
+      "precision": 0.25,
+      "recall": 1.0,
+      "rr": 0.5,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15273"
+      ],
+      "predicted_pids": [
+        "2604.15174",
+        "2604.15273",
+        "2604.15224",
+        "2604.15145"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.401,
+      "is_negative": false
+    },
+    {
+      "qid": "f008",
+      "query": "AD4AD基准测试的主要目的是什么？",
+      "difficulty": "medium",
+      "type": "fact_extract",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15291"
+      ],
+      "predicted_pids": [
+        "2604.15180",
+        "2604.15203",
+        "2604.15224",
+        "2604.15174",
+        "2604.15259"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.409,
+      "is_negative": false
+    },
+    {
+      "qid": "f009",
+      "query": "MLDAS研究采用了哪些网络流量数据集来评估其动态机器学习算法选择方法的性能？",
+      "difficulty": "medium",
+      "type": "fact_extract",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.14957"
+      ],
+      "predicted_pids": [
+        "2604.15174",
+        "2604.15297",
+        "2604.15181",
+        "2604.15169"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.517,
+      "is_negative": false
+    },
+    {
+      "qid": "f010",
+      "query": "VisPCO方法在哪些数据集上进行了实验评估？",
+      "difficulty": "medium",
+      "type": "fact_extract",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15188"
+      ],
+      "predicted_pids": [
+        "2604.15174",
+        "2604.15294",
+        "2604.15181"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 1.048,
+      "is_negative": false
+    },
+    {
+      "qid": "x001",
+      "query": "Paper A提出了一种层次化多模态网页代理方法来解决AIGC工具在自动化网页生成中的风格不一致问题，而Paper B则专注于视觉语言模型中的token剪枝配置",
+      "difficulty": "hard",
+      "type": "comparison",
+      "ndcg": 0.6131,
+      "precision": 1.0,
+      "recall": 0.5,
+      "rr": 1.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15309",
+        "2604.15188"
+      ],
+      "predicted_pids": [
+        "2604.15309"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.417,
+      "is_negative": false
+    },
+    {
+      "qid": "x002",
+      "query": "在前沿研究中，一篇论文深入分析了扩散模型在图像生成时的Fokker‑Planck方程残差并提出正则化方法，另一篇则设计了基于强化学习的视觉检索增强框架，以细粒度",
+      "difficulty": "hard",
+      "type": "comparison",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.14967",
+        "2604.15171"
+      ],
+      "predicted_pids": [
+        "2604.15210",
+        "2604.15148",
+        "2604.15231",
+        "2604.15306"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.371,
+      "is_negative": false
+    },
+    {
+      "qid": "x003",
+      "query": "这两篇论文虽然都涉及多视角信息处理，但在处理多视角数据的方法论上有何不同？第一篇论文如何利用潜在注意力机制来处理心脏超声的多视角结构，而第二篇论文又如何通过检索",
+      "difficulty": "hard",
+      "type": "comparison",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.14951",
+        "2604.15096"
+      ],
+      "predicted_pids": [
+        "2604.15294",
+        "2604.15309",
+        "2604.15231",
+        "2604.15184"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.488,
+      "is_negative": false
+    },
+    {
+      "qid": "x004",
+      "query": "Paper A 和 Paper B 在研究目标和实现方法上有什么具体差异？",
+      "difficulty": "hard",
+      "type": "comparison",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15280",
+        "2604.15166"
+      ],
+      "predicted_pids": [
+        "2604.15145"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.46,
+      "is_negative": false
+    },
+    {
+      "qid": "x005",
+      "query": "<question>",
+      "difficulty": "hard",
+      "type": "comparison",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15271",
+        "2604.15291"
+      ],
+      "predicted_pids": [
+        "2604.15109",
+        "2604.15140",
+        "2604.15306"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.389,
+      "is_negative": false
+    },
+    {
+      "qid": "x006",
+      "query": "OpenMobile和HyperSpace在实现目标和核心技术路线上有什么具体区别？",
+      "difficulty": "hard",
+      "type": "comparison",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15093",
+        "2604.15113"
+      ],
+      "predicted_pids": [
+        "2604.15306",
+        "2604.15121",
+        "2604.15294",
+        "2604.15180",
+        "2604.15174"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.392,
+      "is_negative": false
+    },
+    {
+      "qid": "x008",
+      "query": "请比较这两篇论文在任务背景、核心目标以及所采用的技术实现路径上的主要差异。",
+      "difficulty": "hard",
+      "type": "comparison",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15001",
+        "2604.14980"
+      ],
+      "predicted_pids": [
+        "2604.15145",
+        "2604.15153"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.418,
+      "is_negative": false
+    },
+    {
+      "qid": "x010",
+      "query": "第一篇论文提出的Autogenesis协议专注于解决多智能体系统的哪些核心挑战？与第二篇论文针对多源异构数据查询的NL2SQL方案相比，两者在技术焦点和处理问题",
+      "difficulty": "hard",
+      "type": "comparison",
+      "ndcg": 0.6131,
+      "precision": 0.3333,
+      "recall": 0.5,
+      "rr": 1.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15233",
+        "2604.15034"
+      ],
+      "predicted_pids": [
+        "2604.15233",
+        "2604.15184",
+        "2604.15148"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.462,
+      "is_negative": false
+    },
+    {
+      "qid": "t001",
+      "query": "这些LLM Agent系统的论文反映出当前AI Agent设计中的哪些共同技术趋势或核心能力？",
+      "difficulty": "hard",
+      "type": "trend_synthesis",
+      "ndcg": 0.1461,
+      "precision": 0.25,
+      "recall": 0.125,
+      "rr": 0.25,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15236",
+        "2604.15309",
+        "2604.15186",
+        "2604.15184",
+        "2604.15267",
+        "2604.15093",
+        "2604.15231",
+        "2604.15233"
+      ],
+      "predicted_pids": [
+        "2604.15153",
+        "2604.15190",
+        "2604.15148",
+        "2604.15233"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.43,
+      "is_negative": false
+    },
+    {
+      "qid": "t002",
+      "query": "这些关于LLM评估与可靠性的论文呈现出哪些共同趋势或方法论特征？具体而言，有多少论文涉及对评估方法本身的可靠性或可信度进行诊断，以及有多少论文采用了不确定性量化",
+      "difficulty": "hard",
+      "type": "trend_synthesis",
+      "ndcg": 0.3904,
+      "precision": 1.0,
+      "recall": 0.25,
+      "rr": 1.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15224",
+        "2604.15302",
+        "2604.15203",
+        "2604.15222"
+      ],
+      "predicted_pids": [
+        "2604.15302"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 1.948,
+      "is_negative": false
+    },
+    {
+      "qid": "t003",
+      "query": "这些论文在推理效率和准确性方面展示了哪些不同的策略？它们如何通过验证机制、奖励设计、提前终止或多步规划来平衡计算成本与推理质量？",
+      "difficulty": "hard",
+      "type": "trend_synthesis",
+      "ndcg": 0.3392,
+      "precision": 1.0,
+      "recall": 0.1429,
+      "rr": 1.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15010",
+        "2604.15149",
+        "2604.15244",
+        "2604.15075",
+        "2604.15148",
+        "2604.14967",
+        "2604.14974"
+      ],
+      "predicted_pids": [
+        "2604.15244"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.394,
+      "is_negative": false
+    },
+    {
+      "qid": "t004",
+      "query": "这些论文在提升Transformer效率方面采用了哪些共同的稀疏化策略？这些策略在训练与推理阶段的应用有何异同？",
+      "difficulty": "hard",
+      "type": "trend_synthesis",
+      "ndcg": 0.5531,
+      "precision": 1.0,
+      "recall": 0.4,
+      "rr": 1.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15188",
+        "2604.15244",
+        "2604.15180",
+        "2604.14925",
+        "2604.15153"
+      ],
+      "predicted_pids": [
+        "2604.15180",
+        "2604.15244"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.497,
+      "is_negative": false
+    },
+    {
+      "qid": "t005",
+      "query": "在联邦学习领域，研究者如何同时应对拜占庭攻击与梯度逆向攻击两大安全威胁，分别采用了哪些技术策略来提升系统的鲁棒性与隐私保护能力？",
+      "difficulty": "hard",
+      "type": "trend_synthesis",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": true,
+      "expected_pids": [
+        "2604.15115",
+        "2604.15063"
+      ],
+      "predicted_pids": [
+        "2604.15201",
+        "2604.15180",
+        "2604.14970",
+        "2604.15259",
+        "2604.15231"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.798,
+      "is_negative": false
+    },
+    {
+      "qid": "n001",
+      "query": "这些论文中有哪些关于蛋白质折叠预测（如 AlphaFold）的研究？",
+      "difficulty": "easy",
+      "type": "negative",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": false,
+      "expected_pids": [],
+      "predicted_pids": [
+        "2604.15145",
+        "2604.15190",
+        "2604.15174",
+        "2604.15121",
+        "2604.15294"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.781,
+      "is_negative": true
+    },
+    {
+      "qid": "n002",
+      "query": "请总结语料库中关于大型语言模型在金融风控领域实际部署经验的论文。",
+      "difficulty": "medium",
+      "type": "negative",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": false,
+      "expected_pids": [],
+      "predicted_pids": [
+        "2604.15151",
+        "2604.15203",
+        "2604.15109",
+        "2604.15224"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.651,
+      "is_negative": true
+    },
+    {
+      "qid": "n003",
+      "query": "有哪些论文讨论了气候变化建模与碳排放预测？",
+      "difficulty": "easy",
+      "type": "negative",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": false,
+      "expected_pids": [],
+      "predicted_pids": [
+        "2604.15244",
+        "2604.15145",
+        "2604.15190",
+        "2604.15302",
+        "2604.15184"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 1.229,
+      "is_negative": true
+    },
+    {
+      "qid": "n004",
+      "query": "请列出这些论文中关于脑机接口（BCI）硬件设计与临床试验的研究进展。",
+      "difficulty": "hard",
+      "type": "negative",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": false,
+      "expected_pids": [],
+      "predicted_pids": [
+        "2604.15174",
+        "2604.15181",
+        "2604.15121",
+        "2604.15124",
+        "2604.15210"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.357,
+      "is_negative": true
+    },
+    {
+      "qid": "n005",
+      "query": "这些论文中是否有关于自动驾驶端到端规划算法（如 UniAD, VAD）的改进工作？",
+      "difficulty": "hard",
+      "type": "negative",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": false,
+      "expected_pids": [],
+      "predicted_pids": [
+        "2604.15259",
+        "2604.15184",
+        "2604.15201",
+        "2604.15306",
+        "2604.15297"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.443,
+      "is_negative": true
+    },
+    {
+      "qid": "n006",
+      "query": "请提供关于 Transformer 在蛋白质序列建模中应用的论文综述。",
+      "difficulty": "easy",
+      "type": "negative",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": false,
+      "expected_pids": [],
+      "predicted_pids": [
+        "2604.15174",
+        "2604.15259",
+        "2604.15180"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.444,
+      "is_negative": true
+    },
+    {
+      "qid": "n007",
+      "query": "语料库中有哪些关于推荐系统冷启动问题的研究？",
+      "difficulty": "hard",
+      "type": "negative",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": false,
+      "expected_pids": [],
+      "predicted_pids": [
+        "2604.14970",
+        "2604.15140",
+        "2604.15148",
+        "2604.15190"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 2.67,
+      "is_negative": true
+    },
+    {
+      "qid": "n008",
+      "query": "这些论文中有关于 RLHF（基于人类反馈的强化学习）具体实现细节的工作吗？",
+      "difficulty": "hard",
+      "type": "negative",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": false,
+      "expected_pids": [],
+      "predicted_pids": [
+        "2604.15244",
+        "2604.15306",
+        "2604.15148"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.474,
+      "is_negative": true
+    },
+    {
+      "qid": "n009",
+      "query": "请总结语料库中关于3D场景生成和NeRF改进的研究。",
+      "difficulty": "easy",
+      "type": "negative",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": false,
+      "expected_pids": [],
+      "predicted_pids": [
+        "2604.15184",
+        "2604.15294",
+        "2604.15306"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.487,
+      "is_negative": true
+    },
+    {
+      "qid": "n010",
+      "query": "有哪些论文研究了大模型的数据标注成本优化和主动学习策略？",
+      "difficulty": "medium",
+      "type": "negative",
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rr": 0.0,
+      "has_expected": false,
+      "expected_pids": [],
+      "predicted_pids": [
+        "2604.15148",
+        "2604.15184",
+        "2604.15203",
+        "2604.15297",
+        "2604.15306"
+      ],
+      "num_chunks_retrieved": 8,
+      "latency": 0.598,
+      "is_negative": true
+    }
+  ]
+}

@@ -20,6 +20,7 @@ def _get_llm() -> ChatOpenAI:
         api_key=s.llm_api_key,
         temperature=0.1,
         max_retries=2,
+        request_timeout=120,
     )
 
 

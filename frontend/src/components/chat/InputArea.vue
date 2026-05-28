@@ -13,7 +13,7 @@
       <button
         @click="send"
         :disabled="disabled || !input.trim()"
-        class="px-4 py-2 rounded-sm bg-accent text-white text-sm font-medium disabled:opacity-40 hover:bg-amber-700 transition"
+        class="px-4 py-2 rounded-sm bg-accent text-white text-sm font-medium disabled:opacity-40 hover:opacity-90 transition"
       >
         发送
       </button>

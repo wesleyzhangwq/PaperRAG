@@ -37,15 +37,77 @@ export interface SSEReflection {
   logic_ok: boolean
 }
 
-export interface Message {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  sources?: Source[]
-  thinking?: ThinkingStep[]
-  timestamp: number
+export interface ToolCallEvent {
+  index: number
+  action: string
+  params: Record<string, unknown>
+  reason: string
 }
 
+export interface ToolResultEvent {
+  index: number
+  action: string
+  duration_ms: number
+  summary: string
+  detail: Record<string, unknown>
+}
+
+// ---------------------------------------------------------------------------
+// Productized presentation payload (built by the backend `presentation_node`)
+// ---------------------------------------------------------------------------
+export type Confidence = 'high' | 'medium' | 'low'
+export type Relevance = 'high' | 'medium' | 'low'
+export type StepStatus = 'completed' | 'warning' | 'error' | 'running' | 'pending'
+
+export interface SourceCard {
+  paper_id: string
+  title: string
+  authors?: string[]
+  year?: number | null
+  primary_category?: string | null
+  arxiv_url: string
+  relevance: Relevance
+  hit_count: number
+  summary: string
+  snippets: string[]
+}
+
+export interface RetrievalSummary {
+  total_chunks: number
+  total_papers: number
+  main_topics: string[]
+  is_fallback: boolean
+  narrative: string
+}
+
+export interface PresentationStep {
+  index: number
+  name: string                    // Chinese user-facing label
+  action: string                  // internal action (kept for debug)
+  status: StepStatus
+  user_message: string
+  duration_ms: number
+  debug: {
+    tool: string
+    params: Record<string, unknown>
+    reason: string
+    raw_summary: string
+    extra: Record<string, unknown>
+  }
+}
+
+export interface Presentation {
+  answer: string
+  confidence: Confidence
+  confidence_reason: string
+  sources: SourceCard[]
+  retrieval_summary: RetrievalSummary
+  steps: PresentationStep[]
+}
+
+// ---------------------------------------------------------------------------
+// Live thinking step (in-flight before presentation arrives)
+// ---------------------------------------------------------------------------
 export interface ThinkingStep {
   index: number
   action: string
@@ -54,3 +116,38 @@ export interface ThinkingStep {
   outputSummary?: string
   durationMs?: number
 }
+
+export interface Message {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  reasoning?: string
+  sources?: Source[]
+  thinking?: ThinkingStep[]
+  toolCalls?: ToolCallEvent[]
+  toolResults?: ToolResultEvent[]
+  presentation?: Presentation | null
+  elapsedMs?: number
+  timestamp: number
+  pending?: boolean
+}
+
+export interface Conversation {
+  id: string
+  title: string
+  pinned: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ServerMessage {
+  id: number
+  role: 'user' | 'assistant'
+  content: string
+  sources: Source[]
+  thinking: StepTrace[]
+  presentation?: Presentation | null
+  created_at: string
+}
+
+export type Theme = 'light' | 'dark'

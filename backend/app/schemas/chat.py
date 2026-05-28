@@ -16,6 +16,7 @@ class ChatFilter(BaseModel):
 class ChatRequest(BaseModel):
     query: str = Field(..., min_length=1)
     session_id: str = "default"
+    conversation_id: Optional[str] = None  # preferred; falls back to session_id
     filter: Optional[ChatFilter] = None
     top_k: Optional[int] = None
     final_k: Optional[int] = None

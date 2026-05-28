@@ -18,6 +18,7 @@ ENV/
 # Vendor / IDE extras (do not commit)
 .minimax/
 .cursor/
+.claude/
 
 # IDE
 .idea/

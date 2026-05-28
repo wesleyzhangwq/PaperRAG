@@ -1,0 +1,5 @@
+experiment,param,value,timestamp,count,ndcg_5,precision_5,recall_5,mrr,latency_p90,ctx_precision,tokens_per_request,mode_accuracy,ndcg_5_easy,mrr_easy,ndcg_5_medium,mrr_medium,ndcg_5_hard,mrr_hard
+hybrid_oversample,HYBRID_OVERSAMPLE,1.5,2026-05-26T04:24:25.442929+00:00,70,0.0418,0.04,0.0375,0.05,73.638,0.4857,942.7,0.1795,0.05,0.05,0.04,0.04,0.0339,0.0667
+hybrid_oversample,HYBRID_OVERSAMPLE,2.0,2026-05-26T04:32:41.555372+00:00,70,0.0,0.0,0.0,0.0,6.47,,,,0.0,0.0,0.0,0.0,0.0,0.0
+hybrid_oversample,HYBRID_OVERSAMPLE,2.5,2026-05-26T04:40:15.015972+00:00,70,0.0,0.0,0.0,0.0,6.482,,,,0.0,0.0,0.0,0.0,0.0,0.0
+hybrid_oversample,HYBRID_OVERSAMPLE,3.0,2026-05-26T04:47:44.714174+00:00,70,0.0,0.0,0.0,0.0,6.501,,,,0.0,0.0,0.0,0.0,0.0,0.0

@@ -1,7 +1,7 @@
 """LangGraph agent graph: build, compile, and run."""
 from __future__ import annotations
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.graph import END, StateGraph
 from sqlalchemy.orm import Session
 
@@ -9,6 +9,7 @@ from app.agent.nodes.executor import executor_node
 from app.agent.nodes.final_answer import final_answer_node
 from app.agent.nodes.intent import intent_node
 from app.agent.nodes.planner import planner_node, re_planner_node
+from app.agent.nodes.presentation import presentation_node
 from app.agent.nodes.reflection import reflection_node
 from app.agent.nodes.synthesis import synthesis_node
 from app.agent.state import AgentState
@@ -62,6 +63,9 @@ def build_agent_graph(db: Session) -> object:
     def _final_answer(state: AgentState) -> dict:
         return final_answer_node(state, db=db)
 
+    def _presentation(state: AgentState) -> dict:
+        return presentation_node(state, db=db)
+
     def _should_continue_executing(state: AgentState) -> str:
         idx = state["plan_step_index"]
         plan = state["plan"]
@@ -91,6 +95,7 @@ def build_agent_graph(db: Session) -> object:
     graph.add_node("reflection", _reflection)
     graph.add_node("re_planner", _re_planner)
     graph.add_node("final_answer", _final_answer)
+    graph.add_node("presentation", _presentation)
 
     graph.set_entry_point("intent")
     graph.add_edge("intent", "planner")
@@ -103,18 +108,36 @@ def build_agent_graph(db: Session) -> object:
         {"final_answer": "final_answer", "re_planner": "re_planner", "synthesis": "synthesis"},
     )
     graph.add_edge("re_planner", "executor")
-    graph.add_edge("final_answer", END)
+    graph.add_edge("final_answer", "presentation")
+    graph.add_edge("presentation", END)
 
     return graph.compile()
 
 
 def run_agent_sync(
-    db: Session, query: str, session_id: str = "", history: list[tuple[str, str]] | None = None
+    db: Session,
+    query: str,
+    session_id: str = "",
+    history: list | None = None,
 ) -> ChatResponse:
-    """Run the agent synchronously, return ChatResponse."""
+    """Run the agent synchronously, return ChatResponse.
+
+    `history` may be either a list of LangChain message objects (preferred)
+    or a list of (role, content) tuples (legacy).
+    """
     graph = build_agent_graph(db)
 
-    messages = [HumanMessage(content=query)]
+    messages = []
+    if history:
+        for item in history:
+            if isinstance(item, tuple) and len(item) == 2:
+                role, content = item
+                messages.append(
+                    HumanMessage(content=content) if role == "user" else AIMessage(content=content)
+                )
+            else:
+                messages.append(item)
+    messages.append(HumanMessage(content=query))
 
     initial_state: AgentState = {
         "messages": messages,

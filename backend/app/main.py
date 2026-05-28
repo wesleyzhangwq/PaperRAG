@@ -9,6 +9,7 @@ from app.core.observability import configure_logging
 from app.db.mysql import init_db
 from app.middleware.request_context import RequestContextMiddleware
 from app.routers import chat as chat_router
+from app.routers import conversations as conversations_router
 from app.routers import ingest as ingest_router
 from app.routers import papers as papers_router
 from app.routers import upload as upload_router
@@ -32,6 +33,7 @@ app.add_middleware(
 app.add_middleware(RequestContextMiddleware)
 
 app.include_router(chat_router.router)
+app.include_router(conversations_router.router)
 app.include_router(papers_router.router)
 app.include_router(ingest_router.router)
 app.include_router(upload_router.router)

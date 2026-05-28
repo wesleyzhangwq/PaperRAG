@@ -1,9 +1,13 @@
 <template>
   <div class="flex justify-start">
-    <div class="max-w-[80%]">
+    <div class="max-w-full w-full">
       <div
-        class="px-4 py-3 rounded-card bg-bg-card shadow-card text-sm text-text-primary prose prose-sm"
-        v-html="rendered"
+        :class="[
+          'px-4 py-3 rounded-card bg-bg-card shadow-card text-sm text-text-primary prose prose-sm max-w-none',
+          streaming && !content ? 'min-h-[2.2rem] flex items-center text-text-tertiary italic' : '',
+          streaming ? 'cursor-blink' : '',
+        ]"
+        v-html="rendered || (streaming ? '正在生成回答…' : '')"
         @mouseenter="handleHover"
         @mouseleave="hidePopover"
         ref="contentRef"
@@ -18,9 +22,9 @@
             :href="src.arxiv_url || '#'"
             target="_blank"
             rel="noopener"
-            class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-bg-secondary hover:bg-amber-50 text-text-secondary hover:text-accent transition border border-border"
+            class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-bg-secondary hover:bg-bg-hover text-text-secondary hover:text-accent transition border border-border"
           >
-            <span class="font-medium text-amber-700">[{{ i + 1 }}]</span>
+            <span class="font-medium text-accent">[{{ i + 1 }}]</span>
             <span class="truncate max-w-[200px]">{{ src.title }}</span>
             <span v-if="src.year" class="text-text-tertiary">{{ src.year }}</span>
           </a>
@@ -76,7 +80,7 @@ import { computed, ref } from 'vue'
 import { renderMarkdown, extractCitedIds } from '../../utils/markdown'
 import type { Source } from '../../types'
 
-const props = defineProps<{ content: string; sources?: Source[] }>()
+const props = defineProps<{ content: string; sources?: Source[]; streaming?: boolean }>()
 
 const contentRef = ref<HTMLElement | null>(null)
 const popoverVisible = ref(false)

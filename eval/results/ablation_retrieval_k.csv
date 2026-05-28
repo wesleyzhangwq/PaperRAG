@@ -1,0 +1,5 @@
+experiment,param,value,timestamp,count,ndcg_5,precision_5,recall_5,mrr,latency_p90,ctx_precision,tokens_per_request,mode_accuracy,ndcg_5_easy,mrr_easy,ndcg_5_medium,mrr_medium,ndcg_5_hard,mrr_hard
+retrieval_k,RETRIEVAL_K,4,2026-05-26T04:24:37.366629+00:00,70,0.0167,0.0167,0.0167,0.0167,70.471,0.4595,998.4,0.15,0.0,0.0,0.04,0.04,0.0,0.0
+retrieval_k,RETRIEVAL_K,8,2026-05-26T04:32:47.960909+00:00,70,0.0,0.0,0.0,0.0,6.474,,,,0.0,0.0,0.0,0.0,0.0,0.0
+retrieval_k,RETRIEVAL_K,12,2026-05-26T04:40:21.391188+00:00,70,0.0,0.0,0.0,0.0,6.472,,,,0.0,0.0,0.0,0.0,0.0,0.0
+retrieval_k,RETRIEVAL_K,16,2026-05-26T04:47:51.074775+00:00,70,0.0,0.0,0.0,0.0,6.485,,,,0.0,0.0,0.0,0.0,0.0,0.0

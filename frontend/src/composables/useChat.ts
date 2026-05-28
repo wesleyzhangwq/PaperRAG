@@ -1,72 +1,197 @@
 import { useChatStore } from '../stores/chat'
+import { useConversationsStore } from '../stores/conversations'
 import { useSSE } from './useSSE'
-import { useThinking } from './useThinking'
+import type { Message, ThinkingStep, ToolCallEvent, ToolResultEvent } from '../types'
 
 export function useChat() {
-  const store = useChatStore()
+  const chat = useChatStore()
+  const convs = useConversationsStore()
   const { streamChat, abort } = useSSE()
-  const thinking = useThinking()
 
   async function sendMessage(query: string) {
-    if (!query.trim() || store.isLoading) return
+    if (!query.trim() || chat.isLoading) return
+    if (!convs.activeId) {
+      await convs.createNew()
+    }
 
-    store.addUserMessage(query)
-    store.isLoading = true
-    store.addAssistantMessage('')
-    thinking.reset()
+    // 1) Append user message
+    convs.appendMessage({
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: query,
+      timestamp: Date.now(),
+    })
+    convs.bumpActive(query)
+
+    // 2) Append empty assistant message that will be filled by streaming events
+    const assistant: Message = {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: '',
+      reasoning: '',
+      thinking: [],
+      toolCalls: [],
+      toolResults: [],
+      sources: [],
+      elapsedMs: 0,
+      timestamp: Date.now(),
+      pending: true,
+    }
+    convs.appendMessage(assistant)
+
+    chat.isLoading = true
+    chat.currentElapsedMs = 0
 
     try {
-      for await (const event of streamChat(query, store.sessionId)) {
+      for await (const event of streamChat(query, convs.activeId)) {
         switch (event.type) {
-          case 'intent':
-            // Intent received — agent has started analyzing
-            break
-          case 'plan':
-            thinking.startFromPlan(event.data)
-            break
-          case 'step_start':
-            thinking.markStepStart(event.data.index)
-            break
-          case 'step_done':
-            thinking.markStepDone(event.data)
-            break
-          case 'reflection':
-            if (!event.data.passed) {
-              thinking.markFailed()
+          case 'conversation':
+            // backend echoes the id (could differ if server generated one)
+            if (event.data.conversation_id && event.data.conversation_id !== convs.activeId) {
+              await convs.selectConversation(event.data.conversation_id)
             }
             break
-          case 're_plan':
-            thinking.addExtraSteps(
-              (event.data.new_steps as { action: string; reason: string }[]) || []
-            )
+
+          case 'plan': {
+            const steps: ThinkingStep[] = (event.data.steps || []).map((s, i) => ({
+              index: i,
+              action: s.action,
+              reason: s.reason,
+              status: 'pending',
+            }))
+            convs.updateLastAssistant({ thinking: steps })
             break
-          case 'token':
-            store.updateLastAssistant(
-              (store.messages[store.messages.length - 1]?.content || '') + event.data.t
-            )
+          }
+
+          case 'step_start': {
+            const cur = currentAssistant()
+            if (!cur) break
+            const steps = [...(cur.thinking || [])]
+            const target = steps.find(s => s.index === event.data.index)
+            if (target) target.status = 'running'
+            convs.updateLastAssistant({ thinking: steps })
             break
+          }
+
+          case 'step_done': {
+            const cur = currentAssistant()
+            if (!cur) break
+            const steps = [...(cur.thinking || [])]
+            const running = steps.find(s => s.status === 'running')
+              || steps.find(s => s.status === 'pending')
+            if (running) {
+              running.status = 'done'
+              running.outputSummary = event.data.output_summary
+              running.durationMs = event.data.duration_ms
+            }
+            convs.updateLastAssistant({ thinking: steps })
+            break
+          }
+
+          case 'tool_call': {
+            const cur = currentAssistant()
+            if (!cur) break
+            const toolCalls = [...(cur.toolCalls || []), event.data as ToolCallEvent]
+            convs.updateLastAssistant({ toolCalls })
+            break
+          }
+
+          case 'tool_result': {
+            const cur = currentAssistant()
+            if (!cur) break
+            const toolResults = [...(cur.toolResults || []), event.data as ToolResultEvent]
+            convs.updateLastAssistant({ toolResults })
+            break
+          }
+
+          case 'reflection': {
+            if (event.data.passed === false) {
+              const cur = currentAssistant()
+              if (!cur) break
+              const steps = [...(cur.thinking || [])]
+              const running = steps.find(s => s.status === 'running')
+              if (running) running.status = 'failed'
+              convs.updateLastAssistant({ thinking: steps })
+            }
+            break
+          }
+
+          case 're_plan': {
+            const cur = currentAssistant()
+            if (!cur) break
+            const steps = [...(cur.thinking || [])]
+            const extras = (event.data.new_steps as { action: string; reason: string }[] || []).map((s, i) => ({
+              index: steps.length + i,
+              action: s.action,
+              reason: s.reason,
+              status: 'pending' as const,
+            }))
+            convs.updateLastAssistant({ thinking: [...steps, ...extras] })
+            break
+          }
+
+          case 'reasoning_token': {
+            const cur = currentAssistant()
+            if (!cur) break
+            convs.updateLastAssistant({ reasoning: (cur.reasoning || '') + event.data.t })
+            break
+          }
+
+          case 'token': {
+            const cur = currentAssistant()
+            if (!cur) break
+            convs.updateLastAssistant({ content: (cur.content || '') + event.data.t })
+            break
+          }
+
           case 'sources':
-            store.updateLastAssistant(
-              store.messages[store.messages.length - 1]?.content || '',
-              event.data.sources
-            )
+            convs.updateLastAssistant({ sources: event.data.sources })
             break
-          case 'done':
-            thinking.finish()
+
+          case 'presentation':
+            convs.updateLastAssistant({ presentation: event.data })
             break
+
+          case 'elapsed':
+            chat.currentElapsedMs = event.data.ms
+            convs.updateLastAssistant({ elapsedMs: event.data.ms })
+            break
+
+          case 'done': {
+            const cur = currentAssistant()
+            if (cur) {
+              const steps = (cur.thinking || []).map(s =>
+                s.status === 'pending' ? { ...s, status: 'done' as const } : s
+              )
+              convs.updateLastAssistant({ thinking: steps, pending: false })
+            }
+            break
+          }
+
           case 'error':
-            store.updateLastAssistant(`Error: ${event.data.message}`)
-            thinking.markFailed()
+            convs.updateLastAssistant({
+              content: `❌ 出错：${event.data.message}`,
+              pending: false,
+            })
             break
         }
       }
-    } catch (e) {
-      store.updateLastAssistant('连接中断，请重试。')
-      thinking.markFailed()
+    } catch {
+      convs.updateLastAssistant({
+        content: '❌ 连接中断，请重试。',
+        pending: false,
+      })
     } finally {
-      store.isLoading = false
+      chat.isLoading = false
     }
   }
 
-  return { sendMessage, abort, thinking }
+  function currentAssistant(): Message | null {
+    const arr = convs.activeMessages
+    if (!arr.length) return null
+    const last = arr[arr.length - 1]
+    return last.role === 'assistant' ? last : null
+  }
+
+  return { sendMessage, abort }
 }

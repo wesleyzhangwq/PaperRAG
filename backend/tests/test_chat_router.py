@@ -3,8 +3,18 @@ from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.db.mysql import get_db
 from app.schemas.chat import ChatResponse, Source
 
+
+def _mock_db():
+    db = MagicMock()
+    db.query.return_value.filter.return_value.one_or_none.return_value = None
+    db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
+    yield db
+
+
+app.dependency_overrides[get_db] = _mock_db
 client = TestClient(app)
 
 

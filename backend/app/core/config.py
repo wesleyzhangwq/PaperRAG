@@ -90,6 +90,9 @@ class Settings(BaseSettings):
     judge_llm_api_base: Optional[str] = None
     judge_llm_api_key: Optional[str] = None
 
+    # --- Admin ---
+    admin_api_key: Optional[str] = None  # protects /ingest; open if empty
+
     # --- Observability ---
     observability_json_logs: bool = True
 

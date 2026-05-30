@@ -20,6 +20,7 @@ router = APIRouter(prefix="/upload", tags=["upload"])
 settings = get_settings()
 
 _SAFE_ID = re.compile(r"[^a-zA-Z0-9_\-\.]")
+_MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 
 
 def _safe_paper_id(name: str) -> str:
@@ -36,6 +37,10 @@ async def upload_pdf(
 ) -> UploadResponse:
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Only .pdf files are accepted")
+
+    # Check file size (read size header or first-pass read)
+    if file.size and file.size > _MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"File too large. Max {_MAX_UPLOAD_BYTES // (1024*1024)} MB")
 
     paper_id = _safe_paper_id(file.filename)
 

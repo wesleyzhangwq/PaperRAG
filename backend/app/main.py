@@ -46,12 +46,4 @@ def _startup() -> None:
 
 @app.get("/health", tags=["meta"])
 def health() -> dict:
-    return {
-        "status": "ok",
-        "llm_model": settings.llm_model,
-        "embedding_model": settings.embedding_model,
-        "llm_api_base": settings.llm_api_base,
-        "embedding_api_base": settings.embedding_api_base,
-        "db": "mysql",
-        "vector": "qdrant",
-    }
+    return {"status": "ok"}

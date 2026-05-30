@@ -14,12 +14,12 @@ class ChatFilter(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    query: str = Field(..., min_length=1)
+    query: str = Field(..., min_length=1, max_length=4000)
     session_id: str = "default"
     conversation_id: Optional[str] = None  # preferred; falls back to session_id
     filter: Optional[ChatFilter] = None
-    top_k: Optional[int] = None
-    final_k: Optional[int] = None
+    top_k: Optional[int] = Field(None, ge=1, le=50)
+    final_k: Optional[int] = Field(None, ge=1, le=20)
 
 
 class Source(BaseModel):

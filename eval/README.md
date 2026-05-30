@@ -1,23 +1,24 @@
 # PaperRAG 评估框架
 
-## 文件说明
+## 目录结构
 
 ```
 eval/
 ├── datasets/
-│   └── questions_v2.jsonl       # 评测问题集 (v2: 语义问题)
-├── results/
-│   ├── summary.csv              # 每次评测汇总 (一行一次 run)
-│   └── ablation_*.csv           # 消融实验结果
+│   └── questions_v2.jsonl       # 评测问题集（65 题语义问题）
+├── results/                     # 评测产出（CSV / JSON）
 ├── scripts/
-│   ├── gen_questions.py         # 用 LLM 生成评测问题
-│   └── ablation.py              # 参数消融实验 runner
-├── run_eval.py                  # 主评测脚本
+│   ├── gen_questions.py         # LLM 生成评测问题
+│   └── ablation.py              # 参数消融实验
+├── run_eval.py                  # 主评测脚本（端到端）
+├── run_retrieval_eval.py        # 纯检索评测（不调 LLM 生成）
 ├── judge.py                     # LLM-as-Judge 评分
-└── metrics.py                   # NDCG@k, Precision@k, Context Precision
+└── metrics.py                   # NDCG@k, Precision@k, MRR 等
 ```
 
-## 数据集 Schema (v2)
+## 数据集
+
+每条问题的格式（`questions_v2.jsonl`）：
 
 ```jsonl
 {
@@ -32,82 +33,93 @@ eval/
 }
 ```
 
-**问题类型：**
-- `concept_locate` (easy) — 用语义描述定位论文
-- `method_detail` (medium) — 询问具体技术细节
-- `fact_extract` (medium) — 询问具体事实
-- `comparison` (hard) — 跨论文对比
-- `trend_synthesis` (hard) — 多论文趋势综合
-- `negative` — 语料库不涵盖的话题
+问题类型分布：
 
-## 运行评测
+| 类型 | 难度 | 数量 | 说明 |
+|------|------|------|------|
+| `concept_locate` | easy | 18 | 用语义描述定位论文 |
+| `method_detail` | medium | 14 | 询问具体技术细节 |
+| `fact_extract` | medium | 10 | 询问具体事实 |
+| `comparison` | hard | 8 | 跨论文对比 |
+| `trend_synthesis` | hard | 5 | 多论文趋势综合 |
+| `negative` | — | 10 | 语料库不涵盖的话题（应拒答） |
+
+## 运行
 
 ```bash
 cd backend
 
 # 基础评测
-python ../eval/run_eval.py --run-id "baseline-v2"
+python ../eval/run_eval.py --run-id "baseline"
 
-# 带 LLM-as-Judge 评分
-python ../eval/run_eval.py --run-id "baseline-judge" --judge
+# 带 LLM-as-Judge
+python ../eval/run_eval.py --run-id "with-judge" --judge
 
-# 保存逐题明细
-python ../eval/run_eval.py --run-id "baseline-detail" --detail-json ../eval/results/detail.json
-```
+# 纯检索评测（不调 LLM，成本极低）
+python ../eval/run_retrieval_eval.py --run-id baseline
 
-## 消融实验
-
-```bash
-cd backend
-
-# 单个实验
+# 消融实验
 python ../eval/scripts/ablation.py --experiment hybrid_alpha
-python ../eval/scripts/ablation.py --experiment retrieval_k
-python ../eval/scripts/ablation.py --experiment final_context_k
-
-# 全部实验 (跳过需要 re-ingest 的)
 python ../eval/scripts/ablation.py --all --skip-reingest
 ```
 
-**可用实验：**
-| 实验 | 环境变量 | 扫描值 |
-|------|---------|--------|
-| `hybrid_alpha` | `HYBRID_ALPHA` | 0.0, 0.3, 0.5, 0.72, 0.85, 1.0 |
-| `retrieval_k` | `RETRIEVAL_K` | 4, 8, 12, 16 |
-| `chunk_size` | `CHUNK_SIZE` | 400, 600, 800, 1000, 1200 |
-| `final_context_k` | `FINAL_CONTEXT_K` | 2, 3, 5, 8 |
-| `hybrid_oversample` | `HYBRID_OVERSAMPLE` | 1.5, 2.0, 2.5, 3.0 |
-
-## 生成新问题集
-
-```bash
-cd backend
-
-# 默认参数 (20 concept + 15 method + 10 fact + 10 compare + 5 trend + 10 negative)
-python ../eval/scripts/gen_questions.py
-
-# 自定义
-python ../eval/scripts/gen_questions.py --concept-count 30 --method-count 20 --seed 123
-```
-
-## 指标说明
+## 指标
 
 **检索指标：**
-- `ndcg_5` — Normalized DCG@5
-- `precision_5` — Precision@5
-- `recall_5` — Recall@5
-- `mrr` — Mean Reciprocal Rank
-- `ctx_precision` — 引用命中率 (cited ∩ retrieved / retrieved)
 
-**生成指标 (需要 --judge)：**
-- `faithfulness_avg` — 答案是否忠实于检索上下文 (1-5)
-- `relevance_avg` — 答案是否切题 (1-5)
-- `correctness_avg` — 答案事实正确性 (1-5)
+| 指标 | 含义 |
+|------|------|
+| NDCG@5 | 排序质量（主指标） |
+| MRR | 首个相关结果的排名倒数 |
+| Precision@5 | top-5 中相关结果占比 |
+| Recall@5 | 相关论文被召回的比例 |
 
-**效率指标：**
-- `latency_p90` — P90 延迟
-- `tokens_per_request` — 平均 token 消耗
+**生成指标**（需 `--judge`）：faithfulness / relevance / correctness，各 1-5 分。
 
-**分层报告：**
-- 按难度 (easy/medium/hard) 分别报告 NDCG@5 和 MRR
-- 按问题类型分别报告
+---
+
+## 消融实验结果
+
+### Baseline → Optimized 总览
+
+| | Baseline | Optimized | 变化 |
+|---|----------|-----------|------|
+| NDCG@5 | 0.333 | **0.350** | +5.2% |
+| MRR | 0.377 | **0.385** | +2.0% |
+| Recall@5 | 0.326 | **0.341** | +4.7% |
+| Latency p90 | 1.05s | **0.61s** | -42% |
+
+最优参数：`RETRIEVAL_K=12`, `HYBRID_ALPHA=0.3`（其余保持默认）。
+
+### hybrid_alpha（向量 vs BM25 权重）
+
+| alpha | NDCG@5 | 发现 |
+|-------|--------|------|
+| 0.0（纯 BM25） | 0.209 | 语义查询完全失效 |
+| **0.3** | **0.337** | 最优：BM25 对 hard 类问题提升 10% |
+| 0.72（默认） | 0.333 | — |
+| 1.0（纯向量） | 0.333 | 与 0.72 无差异 |
+
+### retrieval_k（检索数量）
+
+| k | NDCG@5 | 发现 |
+|---|--------|------|
+| 4 | 0.326 | 不够 |
+| 8 | 0.333 | 默认 |
+| **12** | **0.345** | 最优：hard 类提升明显 |
+| 20 | 0.348 | 收益递减，延迟翻倍 |
+
+### 各题型表现（优化后）
+
+| 类型 | NDCG@5 | 评价 |
+|------|--------|------|
+| method_detail | 0.429 | 最强，技术术语匹配好 |
+| concept_locate | 0.389 | 语义匹配有效 |
+| trend_synthesis | 0.475 | 优化后提升最大（+66%） |
+| fact_extract | 0.263 | 较弱，需要精确匹配 |
+| comparison | 0.153 | 最弱，单 query 难召回两篇论文 |
+| negative | 0.000 | 正确拒答，无误报 |
+
+### 瓶颈分析
+
+分数呈二值分布（大部分问题要么 1.0 要么 0.0），说明主要瓶颈是 **embedding 表征质量**，而非排序算法。Agent 的 `query_rewrite`（子查询分解）和 `evaluate_docs`（充分性检查 + 补充检索）正是针对这一瓶颈设计的。

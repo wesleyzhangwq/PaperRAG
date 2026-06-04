@@ -13,7 +13,7 @@
         ></span>
         <span v-else class="inline-block w-2 h-2 rounded-full bg-ok"></span>
         <span class="font-medium text-text-secondary">
-          {{ running ? '正在思考' : '思考完成' }}
+          {{ running ? '正在思考' : '执行步骤' }}
         </span>
         <span class="text-text-tertiary tabular-nums">
           · {{ formatElapsed }} · {{ doneCount }}/{{ steps.length || '?' }} 步
@@ -39,7 +39,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { ThinkingStep, ToolCallEvent, ToolResultEvent } from '../../types'
 import StepIndicator from './StepIndicator.vue'
 
@@ -51,19 +51,65 @@ const props = defineProps<{
   running: boolean
 }>()
 
-const expanded = ref(true)
+const expanded = ref(props.running)
+const displayElapsedMs = ref(props.elapsedMs || 0)
+let timer: ReturnType<typeof setInterval> | null = null
+let localStartedAt = Date.now() - displayElapsedMs.value
+
+watch(
+  () => props.running,
+  (running) => {
+    if (running) {
+      expanded.value = true
+      localStartedAt = Date.now() - (props.elapsedMs || displayElapsedMs.value || 0)
+      startTimer()
+    } else {
+      displayElapsedMs.value = props.elapsedMs || displayElapsedMs.value
+      expanded.value = false
+      stopTimer()
+    }
+  },
+  { immediate: true },
+)
+
+watch(
+  () => props.elapsedMs,
+  (elapsed) => {
+    if (props.running) {
+      displayElapsedMs.value = Math.max(displayElapsedMs.value, elapsed || 0)
+      localStartedAt = Date.now() - displayElapsedMs.value
+    } else {
+      displayElapsedMs.value = elapsed || displayElapsedMs.value
+    }
+  },
+)
+
+onBeforeUnmount(stopTimer)
 
 const doneCount = computed(
   () => props.steps.filter(s => s.status === 'done' || s.status === 'failed').length
 )
 
 const formatElapsed = computed(() => {
-  const s = (props.elapsedMs || 0) / 1000
+  const s = (displayElapsedMs.value || 0) / 1000
   if (s < 60) return `${s.toFixed(1)}s`
   const m = Math.floor(s / 60)
   const r = (s - m * 60).toFixed(0)
   return `${m}m${r}s`
 })
+
+function startTimer() {
+  if (timer) return
+  timer = setInterval(() => {
+    displayElapsedMs.value = Math.max(displayElapsedMs.value, Date.now() - localStartedAt)
+  }, 100)
+}
+
+function stopTimer() {
+  if (!timer) return
+  clearInterval(timer)
+  timer = null
+}
 
 function callForIndex(i: number): ToolCallEvent | undefined {
   return props.toolCalls.find(c => c.index === i)

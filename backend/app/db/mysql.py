@@ -26,6 +26,8 @@ def init_db() -> None:
     from app.models import paper  # noqa: F401 register tables
     from app.models import chat_history  # noqa: F401 register tables
     from app.models import conversation  # noqa: F401 register tables
+    from app.models import feedback  # noqa: F401 register tables
+    from app.models import upload_job  # noqa: F401 register tables
     Base.metadata.create_all(bind=engine)
     _migrate_chat_history()
 

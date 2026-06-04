@@ -187,8 +187,10 @@ def _build_retrieval_summary(
     db: Session,
     retrieval_context: list,
     is_fallback: bool,
+    cited_papers: int,
 ) -> dict:
     chunks = [d for d in retrieval_context if (d.metadata or {}).get("paper_id")]
+    web_docs = [d for d in retrieval_context if (d.metadata or {}).get("source") == "web_search"]
     paper_ids = [(d.metadata or {}).get("paper_id") for d in chunks]
     unique_papers = sorted(set(p for p in paper_ids if p))
     # Pull primary_category as a simple topic proxy
@@ -213,14 +215,21 @@ def _build_retrieval_summary(
             + (f"，主题集中在 {'、'.join(main_topics)}" if main_topics else "")
             + "。"
         )
+        narrative += f"其中 {cited_papers} 篇被最终回答引用并展示为参考论文。"
+        if len(unique_papers) > cited_papers:
+            narrative += "未展示的论文是候选检索上下文，未被最终答案直接引用。"
         if top_title:
             narrative += f"其中与问题最相关的是《{top_title}》。"
+        if web_docs:
+            narrative += f"此外还补充查询了 {len(web_docs)} 条网络资料，用于弥补本地论文库不足。"
         if is_fallback:
             narrative += "由于问题较宽泛或检索词不足，系统使用了扩展检索，结果可能不够精确。"
 
     return {
         "total_chunks": len(chunks),
         "total_papers": len(unique_papers),
+        "cited_papers": cited_papers,
+        "web_results": len(web_docs),
         "main_topics": main_topics,
         "is_fallback": bool(is_fallback),
         "narrative": narrative,
@@ -268,24 +277,25 @@ def _build_steps_from_traces(state: AgentState) -> list[dict]:
         action = trace.get("action", "")
         name = STEP_LABELS.get(action, action)
         # Locate matching plan step (by index in executor traces) for params/reason
-        params: dict[str, Any] = {}
-        reason = ""
+        params: dict[str, Any] = dict(trace.get("params") or {})
+        reason = str(trace.get("reason") or "")
         # Heuristic: nth executor trace ≈ nth plan step
-        if action not in ("intent_analysis", "planning", "reasoning_synthesis", "self_reflection", "re_planning"):
+        if not params and action not in ("intent_analysis", "planning", "reasoning_synthesis", "self_reflection", "re_planning"):
             # try to find any plan step with same action; consume in order
             for ps in plan:
                 if ps.get("action") == action:
                     params = dict(ps.get("params") or {})
-                    reason = ps.get("reason", "")
+                    reason = reason or ps.get("reason", "")
                     break
 
         # Recover detail from output_summary heuristics
         detail: dict[str, Any] = {
             "raw_summary": trace.get("output_summary", ""),
         }
+        detail.update(trace.get("detail") or {})
 
         # For evaluate_docs: lift from state.evaluator_result
-        if action == "evaluate_docs":
+        if action == "evaluate_docs" and not trace.get("detail"):
             er = state.get("evaluator_result") or {}
             detail.update({
                 "sufficient": er.get("sufficient"),
@@ -294,7 +304,7 @@ def _build_steps_from_traces(state: AgentState) -> list[dict]:
                 "reason": er.get("reason", ""),
             })
 
-        if action == "retrieve_local":
+        if action == "retrieve_local" and "used_fallback" not in detail:
             detail.update({
                 "used_fallback": bool(state.get("is_fallback")),
             })
@@ -333,7 +343,7 @@ def presentation_node(state: AgentState, *, db: Session) -> dict:
 
     source_cards = _build_source_cards(db, sources_data, retrieval_context)
     retrieval_summary = _build_retrieval_summary(
-        db, retrieval_context, bool(state.get("is_fallback"))
+        db, retrieval_context, bool(state.get("is_fallback")), len(source_cards)
     )
     confidence_level, confidence_reason = _compute_confidence(state, len(source_cards))
     steps = _build_steps_from_traces(state)

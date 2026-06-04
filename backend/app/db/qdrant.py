@@ -17,8 +17,8 @@ from app.core.config import get_settings
 _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 
 
-class AlibabaEmbeddingClient:
-    """Minimal client for Alibaba text-embedding-v4 API."""
+class EmbeddingClient:
+    """Minimal embedding client for DashScope and OpenAI-compatible APIs."""
 
     def __init__(
         self,
@@ -31,15 +31,14 @@ class AlibabaEmbeddingClient:
         self.model = model
         self.api_base = api_base.rstrip("/")
         self.api_key = api_key
-        # Official DashScope embeddings endpoint.
-        # Accept both base styles:
-        # - https://dashscope.aliyuncs.com
-        # - https://dashscope.aliyuncs.com/compatible-mode/v1
-        root = self.api_base
-        if "/compatible-mode/v1" in root:
-            root = root.split("/compatible-mode/v1")[0]
-        self.endpoint = f"{root}/api/v1/services/embeddings/text-embedding/text-embedding"
-        # DashScope text-embedding-v4 accepts at most 10 inputs per request.
+        self.api_style = "dashscope" if "dashscope.aliyuncs.com" in self.api_base else "openai"
+        if self.api_style == "dashscope":
+            root = self.api_base
+            if "/compatible-mode/v1" in root:
+                root = root.split("/compatible-mode/v1")[0]
+            self.endpoint = f"{root}/api/v1/services/embeddings/text-embedding/text-embedding"
+        else:
+            self.endpoint = f"{self.api_base}/embeddings"
         self.batch_size = 10
         self._query_cache_max = max(0, query_cache_max)
         if self._query_cache_max > 0:
@@ -53,7 +52,10 @@ class AlibabaEmbeddingClient:
 
     def _post_embed_chunk(self, headers: dict, chunk: list[str]) -> requests.Response:
         cfg = get_settings()
-        payload = {"model": self.model, "input": {"texts": chunk}}
+        if self.api_style == "dashscope":
+            payload = {"model": self.model, "input": {"texts": chunk}}
+        else:
+            payload = {"model": self.model, "input": chunk}
         attempts = max(1, cfg.http_retry_max_attempts)
         resp: Optional[requests.Response] = None
         for attempt in range(attempts):
@@ -88,22 +90,34 @@ class AlibabaEmbeddingClient:
                 )
             data = resp.json()
 
-            # Expected DashScope shape
             if isinstance(data, dict):
-                output = data.get("output") or {}
-                embeddings = output.get("embeddings") or []
-                if embeddings:
-                    vectors = []
-                    for item in embeddings:
-                        vec = item.get("embedding")
-                        if isinstance(vec, list):
-                            vectors.append(vec)
-                    if vectors:
-                        all_vectors.extend(vectors)
-                        continue
+                vectors = self._parse_vectors(data)
+                if vectors:
+                    all_vectors.extend(vectors)
+                    continue
             raise RuntimeError(f"Unexpected embedding response shape: {data}")
 
         return all_vectors
+
+    @staticmethod
+    def _parse_vectors(data: dict) -> list[list[float]]:
+        output = data.get("output") or {}
+        dashscope_embeddings = output.get("embeddings") or []
+        if dashscope_embeddings:
+            return [
+                item["embedding"]
+                for item in dashscope_embeddings
+                if isinstance(item, dict) and isinstance(item.get("embedding"), list)
+            ]
+
+        openai_embeddings = data.get("data") or []
+        if openai_embeddings:
+            return [
+                item["embedding"]
+                for item in openai_embeddings
+                if isinstance(item, dict) and isinstance(item.get("embedding"), list)
+            ]
+        return []
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         return self._embed_batch(texts)
@@ -124,14 +138,14 @@ class AlibabaEmbeddingClient:
 
 
 @lru_cache
-def get_embeddings() -> AlibabaEmbeddingClient:
+def get_embeddings() -> EmbeddingClient:
     s = get_settings()
     if not s.embedding_api_key:
         raise RuntimeError("Missing EMBEDDING_API_KEY in .env")
     qmax = (
         s.cache_embedding_max_entries if s.cache_embedding_enabled else 0
     )
-    return AlibabaEmbeddingClient(
+    return EmbeddingClient(
         model=s.embedding_model,
         api_base=s.embedding_api_base,
         api_key=s.embedding_api_key,
@@ -186,7 +200,7 @@ class QdrantVectorStore:
         self,
         client: QdrantClient,
         collection_name: str,
-        embedding: AlibabaEmbeddingClient,
+        embedding: EmbeddingClient,
     ) -> None:
         self._client = client
         self._collection_name = collection_name

@@ -1,5 +1,5 @@
 <template>
-  <div ref="listRef" class="flex-1 overflow-y-auto px-4 py-6">
+  <div ref="listRef" class="flex-1 overflow-y-auto px-4 py-6" @scroll="handleScroll">
     <div class="max-w-3xl mx-auto space-y-5">
       <div v-if="messages.length === 0" class="text-center py-20 text-text-tertiary text-sm">
         发送一条消息开始对话吧～
@@ -10,17 +10,11 @@
         <div v-else class="space-y-3">
           <!-- ① While streaming: show live progress card -->
           <ThinkingCard
-            v-if="msg.pending"
+            v-if="hasThinking(msg)"
             :steps="msg.thinking || []"
             :tool-calls="msg.toolCalls || []"
             :tool-results="msg.toolResults || []"
             :elapsed-ms="msg.elapsedMs || 0"
-            :running="true"
-          />
-          <!-- Optional: reasoning trace (model's internal thinking, collapsed by default) -->
-          <ReasoningBlock
-            v-if="msg.reasoning && msg.reasoning.length > 0"
-            :reasoning="msg.reasoning"
             :running="!!msg.pending"
           />
           <!-- ② Once content arrives (or presentation), show the structured AnswerCard -->
@@ -30,6 +24,9 @@
             :sources="msg.sources"
             :presentation="msg.presentation"
             :streaming="!!msg.pending"
+            :elapsed-ms="msg.elapsedMs || 0"
+            :conversation-id="convs.activeId"
+            :message-id="serverMessageId(msg.id)"
           />
         </div>
       </template>
@@ -40,21 +37,60 @@
 <script setup lang="ts">
 import { ref, watch, nextTick } from 'vue'
 import type { Message } from '../../types'
+import { useConversationsStore } from '../../stores/conversations'
 import UserBubble from './UserBubble.vue'
 import ThinkingCard from './ThinkingCard.vue'
-import ReasoningBlock from './ReasoningBlock.vue'
 import AnswerCard from '../answer/AnswerCard.vue'
 
 const props = defineProps<{ messages: Message[] }>()
+const convs = useConversationsStore()
 
 const listRef = ref<HTMLElement>()
+const stickToBottom = ref(true)
+const BOTTOM_THRESHOLD_PX = 96
 
 watch(
-  () => [props.messages.length, props.messages[props.messages.length - 1]?.content],
+  () => {
+    const last = props.messages[props.messages.length - 1]
+    return [
+      props.messages.length,
+      last?.content,
+      last?.pending,
+      last?.elapsedMs,
+      last?.thinking?.length,
+      last?.presentation,
+    ]
+  },
   async () => {
     await nextTick()
-    if (listRef.value) listRef.value.scrollTop = listRef.value.scrollHeight
+    if (stickToBottom.value) scrollToBottom()
   },
   { immediate: true },
 )
+
+function handleScroll() {
+  stickToBottom.value = isNearBottom()
+}
+
+function isNearBottom(): boolean {
+  const el = listRef.value
+  if (!el) return true
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_THRESHOLD_PX
+}
+
+function scrollToBottom() {
+  const el = listRef.value
+  if (!el) return
+  el.scrollTop = el.scrollHeight
+}
+
+function hasThinking(msg: Message): boolean {
+  return msg.role === 'assistant' && !!(msg.pending || msg.thinking?.length)
+}
+
+function serverMessageId(id: string): number | undefined {
+  if (!id.startsWith('srv-')) return undefined
+  const parsed = Number(id.slice(4))
+  return Number.isFinite(parsed) ? parsed : undefined
+}
 </script>

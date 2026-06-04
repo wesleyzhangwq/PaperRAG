@@ -6,22 +6,37 @@ import type { Conversation, Message, ServerMessage } from '../types'
 const ACTIVE_KEY = 'paperrag.activeConversation'
 
 function serverMessagesToLocal(rows: ServerMessage[]): Message[] {
-  return rows.map(r => ({
-    id: `srv-${r.id}`,
-    role: r.role,
-    content: r.content,
-    sources: r.sources || [],
-    thinking: (r.thinking || []).map((t, i) => ({
+  return rows.map(r => {
+    const thinking = (r.thinking || []).map((t, i) => ({
       index: i,
       action: t.action,
       reason: '',
       status: 'done' as const,
       outputSummary: t.output_summary,
       durationMs: t.duration_ms,
-    })),
-    presentation: r.presentation || null,
-    timestamp: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
-  }))
+    }))
+    return {
+      id: `srv-${r.id}`,
+      role: r.role,
+      content: r.content,
+      sources: r.sources || [],
+      thinking,
+      presentation: r.presentation || null,
+      elapsedMs: deriveElapsedMs(thinking, r.presentation),
+      timestamp: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
+    }
+  })
+}
+
+function deriveElapsedMs(
+  thinking: Message['thinking'],
+  presentation: ServerMessage['presentation'],
+): number {
+  const traceMs = (thinking || []).reduce((sum, step) => sum + (step.durationMs || 0), 0)
+  const presentationMs = (presentation?.steps || []).reduce((sum, step) => {
+    return sum + (step.duration_ms || 0)
+  }, 0)
+  return Math.round(Math.max(traceMs, presentationMs))
 }
 
 export const useConversationsStore = defineStore('conversations', () => {

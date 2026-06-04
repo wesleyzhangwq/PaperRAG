@@ -1,6 +1,7 @@
 """API I/O schemas."""
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -64,11 +65,56 @@ class PaperListResponse(BaseModel):
 
 
 class UploadResponse(BaseModel):
+    job_id: Optional[str] = None
     paper_id: str
     status: str
     num_chunks: int
     message: Optional[str] = None
 
 
+class UploadJobResponse(BaseModel):
+    job_id: str
+    paper_id: str
+    filename: str
+    title: str
+    status: str
+    num_chunks: int
+    message: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class UploadJobListResponse(BaseModel):
+    total: int
+    items: list[UploadJobResponse]
+
+
 class IngestResponse(BaseModel):
     stats: dict
+
+
+class AnswerFeedbackRequest(BaseModel):
+    conversation_id: str = Field(..., min_length=1, max_length=64)
+    message_id: Optional[int] = Field(None, ge=1)
+    vote: str = Field(..., pattern="^(up|down)$")
+    reason: Optional[str] = Field(None, max_length=128)
+    comment: Optional[str] = Field(None, max_length=2000)
+
+
+class AnswerFeedbackResponse(BaseModel):
+    status: str
+
+
+class AnswerFeedbackItem(BaseModel):
+    id: int
+    conversation_id: str
+    message_id: Optional[int] = None
+    vote: str
+    reason: Optional[str] = None
+    comment: Optional[str] = None
+    created_at: datetime
+
+
+class AnswerFeedbackListResponse(BaseModel):
+    total: int
+    items: list[AnswerFeedbackItem]

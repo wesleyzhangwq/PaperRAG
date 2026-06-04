@@ -20,8 +20,22 @@
         </button>
       </div>
 
+      <nav class="px-2 pb-3 space-y-1">
+        <button
+          v-for="item in navItems"
+          :key="item.key"
+          type="button"
+          class="w-full flex items-center gap-2 px-2 py-2 rounded-md text-sm transition"
+          :class="activeView === item.key ? 'bg-bg-hover text-text-primary' : 'text-text-secondary hover:bg-bg-hover'"
+          @click="activeView = item.key"
+        >
+          <span class="w-5 text-center text-xs font-semibold text-text-tertiary">{{ item.icon }}</span>
+          <span>{{ item.label }}</span>
+        </button>
+      </nav>
+
       <!-- Conversations list -->
-      <div class="flex-1 overflow-y-auto px-2 pb-3 space-y-5">
+      <div v-if="activeView === 'chat'" class="flex-1 overflow-y-auto px-2 pb-3 space-y-5">
         <ConversationSection
           v-if="convs.pinned.length > 0"
           title="Pinned"
@@ -59,6 +73,7 @@
           </template>
         </ConversationSection>
       </div>
+      <div v-else class="flex-1"></div>
 
       <!-- Footer: theme toggle -->
       <div class="px-4 py-3 border-t border-border flex items-center justify-between">
@@ -83,10 +98,13 @@
           :title="sidebarOpen ? '收起侧栏' : '展开侧栏'"
         >☰</button>
         <span class="text-sm text-text-secondary truncate">
-          {{ convs.active?.title || 'Agentic RAG Paper Assistant' }}
+          {{ headerTitle }}
         </span>
       </header>
-      <ChatView />
+      <ChatView v-if="activeView === 'chat'" />
+      <PapersView v-else-if="activeView === 'papers'" />
+      <UploadsView v-else-if="activeView === 'uploads'" />
+      <SettingsView v-else />
     </main>
   </div>
 </template>
@@ -94,6 +112,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import ChatView from '../views/ChatView.vue'
+import PapersView from '../views/PapersView.vue'
+import UploadsView from '../views/UploadsView.vue'
+import SettingsView from '../views/SettingsView.vue'
 import ConversationSection from '../components/sidebar/ConversationSection.vue'
 import { useConversationsStore } from '../stores/conversations'
 import { useThemeStore } from '../stores/theme'
@@ -101,17 +122,39 @@ import { useThemeStore } from '../stores/theme'
 const convs = useConversationsStore()
 const theme = useThemeStore()
 const sidebarOpen = ref(true)
+const activeView = ref<'chat' | 'papers' | 'uploads' | 'settings'>('chat')
+
+const navItems = [
+  { key: 'chat' as const, label: '对话', icon: 'C' },
+  { key: 'papers' as const, label: '论文库', icon: 'P' },
+  { key: 'uploads' as const, label: '上传', icon: 'U' },
+  { key: 'settings' as const, label: '设置', icon: 'S' },
+]
 
 const themeLabel = computed(() =>
   theme.theme === 'light' ? '日间模式' : '夜间模式'
 )
+const headerTitle = computed(() => {
+  if (activeView.value === 'chat') return convs.active?.title || 'Agentic RAG Paper Assistant'
+  return navItems.find(item => item.key === activeView.value)?.label || 'PaperRAG'
+})
 
 onMounted(async () => {
   await convs.loadAll()
 })
 
 async function newChat() {
+  const existing = findReusableNewConversation()
+  activeView.value = 'chat'
+  if (existing) {
+    await convs.selectConversation(existing.id)
+    return
+  }
   await convs.createNew()
+}
+
+function findReusableNewConversation() {
+  return convs.recent.find(conv => (conv.title || '新对话').trim() === '新对话')
 }
 
 async function onSelect(id: string) {

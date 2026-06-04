@@ -49,6 +49,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { PresentationStep } from '../../types'
+import { formatStepDuration } from '../../utils/duration'
 
 const props = defineProps<{ steps: PresentationStep[] }>()
 const open = ref(true)
@@ -60,9 +61,5 @@ const warnCount = computed(() =>
   props.steps.filter(s => s.status === 'warning' || s.status === 'error').length
 )
 
-function formatDuration(ms: number): string {
-  if (!ms) return ''
-  if (ms < 1000) return `${Math.round(ms)}ms`
-  return `${(ms / 1000).toFixed(1)}s`
-}
+const formatDuration = formatStepDuration
 </script>

@@ -1,0 +1,46 @@
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
+
+spring:
+  application:
+    name: paperrag-java
+  datasource:
+    url: ${MYSQL_URL:jdbc:mysql://localhost:3306/paperrag?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC}
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
+app:
+  paper:
+    max-upload-mb: 50
+  ingest:
+    chunk-size-tokens: 220
+  vector:
+    store: memory
+    embedding-dimensions: 128
+  qdrant:
+    url: ${QDRANT_URL:http://localhost:6333}
+    collection: ${QDRANT_COLLECTION:paperrag_chunks}
+    vector-size: ${QDRANT_VECTOR_SIZE:128}
+  redis:
+    url: ${REDIS_URL:redis://localhost:6379}
+    default-ttl-seconds: 300
+    null-ttl-seconds: 30
+    ttl-jitter-ratio: 0.1
+  rate-limit:
+    fixed-window-limit: 2
+    fixed-window-seconds: 60
+  rocketmq:
+    name-server: ${ROCKETMQ_NAME_SERVER:localhost:9876}
+    ingest-topic: ${ROCKETMQ_INGEST_TOPIC:paperrag-ingest}
+    consumer-group: ${ROCKETMQ_CONSUMER_GROUP:paperrag-ingest-java}

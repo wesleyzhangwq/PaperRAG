@@ -13,12 +13,15 @@ class StepSpec(TypedDict):
     reason: str
 
 
-class StepTrace(TypedDict):
+class StepTrace(TypedDict, total=False):
     node: str
     action: str
     input_summary: str
     output_summary: str
     duration_ms: float
+    params: dict
+    reason: str
+    detail: dict
 
 
 class ReflectionResult(TypedDict):

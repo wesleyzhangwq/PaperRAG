@@ -3,7 +3,15 @@
     <!-- ① 回答 -->
     <div class="rounded-card bg-bg-card border border-border shadow-card p-4">
       <header class="flex items-center justify-between mb-2">
-        <span class="text-xs font-medium text-text-tertiary uppercase tracking-wide">回答</span>
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-medium text-text-tertiary uppercase tracking-wide">回答</span>
+          <span
+            v-if="workedLabel"
+            class="inline-flex items-center rounded-full border border-border bg-bg-secondary px-2 py-0.5 text-[11px] font-medium text-text-secondary"
+          >
+            Worked for {{ workedLabel }}
+          </span>
+        </div>
         <ConfidenceBadge
           v-if="presentation"
           :level="presentation.confidence"
@@ -12,11 +20,12 @@
       </header>
       <div
         :class="[
-          'prose prose-sm max-w-none text-text-primary text-sm',
+          'answer-prose prose prose-sm max-w-none text-text-primary text-sm',
           streaming ? 'cursor-blink' : '',
         ]"
         v-html="rendered || (streaming ? '<em class=\'text-text-tertiary\'>正在生成回答…</em>' : '')"
-        @mouseenter="onHover"
+        @mouseover="onCitationHover"
+        @click="onCitationClick"
         @mouseleave="hidePopover"
       ></div>
       <p
@@ -25,12 +34,34 @@
       >
         <span class="font-medium">可信度说明：</span>{{ presentation.confidence_reason }}
       </p>
+      <div
+        v-if="conversationId && !streaming"
+        class="mt-3 pt-3 border-t border-border flex items-center justify-between gap-3"
+      >
+        <span class="text-xs text-text-tertiary">{{ feedbackStatus }}</span>
+        <div class="flex items-center gap-1.5">
+          <button
+            type="button"
+            class="px-2 py-1 rounded-md border border-border text-xs text-text-secondary hover:bg-bg-hover disabled:opacity-50"
+            :disabled="feedbackSending"
+            title="这个答案有帮助"
+            @click="sendFeedback('up')"
+          >有帮助</button>
+          <button
+            type="button"
+            class="px-2 py-1 rounded-md border border-border text-xs text-text-secondary hover:bg-bg-hover disabled:opacity-50"
+            :disabled="feedbackSending"
+            title="这个答案需要改进"
+            @click="sendFeedback('down')"
+          >需改进</button>
+        </div>
+      </div>
     </div>
 
     <!-- ② 参考论文 -->
     <section v-if="cards.length > 0">
       <h3 class="text-xs font-medium text-text-tertiary uppercase tracking-wide mb-2">
-        参考论文 · {{ cards.length }} 篇
+        参考论文 · {{ cards.length }} 篇（回答引用）
       </h3>
       <div class="space-y-2">
         <SourceCardComp
@@ -45,10 +76,7 @@
     <!-- ③ 检索概况 -->
     <RetrievalSummaryCard v-if="presentation?.retrieval_summary" :summary="presentation.retrieval_summary" />
 
-    <!-- ④ 执行步骤 -->
-    <ExecutionSteps v-if="presentation?.steps && presentation.steps.length > 0" :steps="presentation.steps" />
-
-    <!-- ⑤ 调试详情（默认折叠） -->
+    <!-- ④ 调试详情（默认折叠） -->
     <DebugPanel
       v-if="presentation?.steps && presentation.steps.length > 0"
       :steps="presentation.steps"
@@ -92,10 +120,10 @@
 import { computed, ref } from 'vue'
 import { renderMarkdown } from '../../utils/markdown'
 import type { Presentation, Source } from '../../types'
+import { submitAnswerFeedback } from '../../api/feedback'
 import ConfidenceBadge from './ConfidenceBadge.vue'
 import SourceCardComp from './SourceCard.vue'
 import RetrievalSummaryCard from './RetrievalSummaryCard.vue'
-import ExecutionSteps from './ExecutionSteps.vue'
 import DebugPanel from './DebugPanel.vue'
 
 const props = defineProps<{
@@ -103,10 +131,23 @@ const props = defineProps<{
   sources?: Source[]
   presentation?: Presentation | null
   streaming?: boolean
+  elapsedMs?: number
+  conversationId?: string
+  messageId?: number
 }>()
 
 const rendered = computed(() => renderMarkdown(props.content, props.sources))
 const cards = computed(() => props.presentation?.sources || [])
+const workedLabel = computed(() => {
+  if (props.streaming || !props.elapsedMs) return ''
+  const seconds = Math.max(1, Math.round(props.elapsedMs / 1000))
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  const rest = seconds - minutes * 60
+  return rest ? `${minutes}m ${rest}s` : `${minutes}m`
+})
+const feedbackSending = ref(false)
+const feedbackStatus = ref('这个回答有帮助吗？')
 
 // Hover popover for inline citations
 const popoverVisible = ref(false)
@@ -115,24 +156,61 @@ const popoverTop = ref(0)
 const popoverLeft = ref(0)
 let hideTimeout: ReturnType<typeof setTimeout> | null = null
 
-function onHover(e: MouseEvent) {
-  const target = e.target as HTMLElement
-  const pill = target.closest('[data-paper-id]') as HTMLElement | null
-  if (!pill) return
-  if (hideTimeout) clearTimeout(hideTimeout)
-  const paperId = pill.dataset.paperId
-  const source = props.sources?.find(s => s.paper_id === paperId)
+function sourceForPaperId(paperId?: string) {
+  if (!paperId) return null
+  return props.sources?.find(s => s.paper_id === paperId)
+    || cards.value.find(s => s.paper_id === paperId)
+    || null
+}
+
+function showCitationPopover(pill: HTMLElement, source: Source | null) {
   if (!source) return
+  if (hideTimeout) clearTimeout(hideTimeout)
   const rect = pill.getBoundingClientRect()
   popoverTop.value = rect.bottom + 8
   popoverLeft.value = Math.max(8, rect.left - 100)
   popoverSource.value = source
   popoverVisible.value = true
 }
+
+function onCitationHover(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  const pill = target.closest('[data-paper-id]') as HTMLElement | null
+  if (!pill) return
+  showCitationPopover(pill, sourceForPaperId(pill.dataset.paperId) as Source | null)
+}
+
+function onCitationClick(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  const pill = target.closest('[data-paper-id]') as HTMLElement | null
+  if (!pill) return
+  const source = sourceForPaperId(pill.dataset.paperId)
+  if (!source?.arxiv_url) return
+  window.open(source.arxiv_url, '_blank', 'noopener')
+}
 function hidePopover() {
   hideTimeout = setTimeout(() => {
     popoverVisible.value = false
     popoverSource.value = null
   }, 150)
+}
+
+async function sendFeedback(vote: 'up' | 'down') {
+  if (!props.conversationId || feedbackSending.value) return
+  feedbackSending.value = true
+  feedbackStatus.value = '正在记录反馈…'
+  try {
+    await submitAnswerFeedback({
+      conversation_id: props.conversationId,
+      message_id: props.messageId,
+      vote,
+      reason: vote === 'down' ? 'user_reported_quality_issue' : 'helpful',
+    })
+    feedbackStatus.value = '反馈已记录'
+  } catch {
+    feedbackStatus.value = '反馈提交失败，请稍后重试'
+  } finally {
+    feedbackSending.value = false
+  }
 }
 </script>

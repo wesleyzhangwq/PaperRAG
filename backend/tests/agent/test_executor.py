@@ -1,6 +1,7 @@
 """Test executor node."""
 from unittest.mock import patch, MagicMock
 from langchain_core.documents import Document
+from langchain_core.messages import HumanMessage
 
 from app.agent.state import AgentState, StepSpec
 from app.agent.nodes.executor import executor_node
@@ -58,3 +59,78 @@ def test_executor_advances_index():
         result = executor_node(state, db=MagicMock())
 
     assert result["plan_step_index"] == 1
+
+
+def test_executor_inserts_web_search_when_docs_insufficient_and_tavily_configured():
+    plan = [
+        StepSpec(action="evaluate_docs", params={}, reason="check"),
+        StepSpec(action="reasoning_synthesis", params={}, reason="answer"),
+    ]
+    state = _base_state(
+        messages=[HumanMessage(content="explain recent RAG products")],
+        plan=plan,
+        plan_step_index=0,
+        retrieval_context=[Document(page_content="partial", metadata={"paper_id": "2604.00001"})],
+    )
+    settings = MagicMock(tavily_api_key="test-key")
+
+    with patch("app.agent.nodes.executor.evaluate_docs", return_value={
+        "sufficient": False,
+        "missing_aspects": ["recent industry background", "product usage"],
+        "reason": "local papers are incomplete",
+        "parse_failed": False,
+    }), patch("app.agent.nodes.executor.get_settings", return_value=settings):
+        result = executor_node(state, db=MagicMock())
+
+    actions = [step["action"] for step in result["plan"]]
+    assert actions[1] == "search_web"
+    assert result["plan"][1]["params"]["query"] == "recent industry background"
+    assert "retrieve_local" in actions
+
+
+def test_executor_does_not_insert_web_search_when_tavily_missing():
+    plan = [
+        StepSpec(action="evaluate_docs", params={}, reason="check"),
+        StepSpec(action="reasoning_synthesis", params={}, reason="answer"),
+    ]
+    state = _base_state(
+        messages=[HumanMessage(content="explain recent RAG products")],
+        plan=plan,
+        plan_step_index=0,
+        retrieval_context=[Document(page_content="partial", metadata={"paper_id": "2604.00001"})],
+    )
+    settings = MagicMock(tavily_api_key=None)
+
+    with patch("app.agent.nodes.executor.evaluate_docs", return_value={
+        "sufficient": False,
+        "missing_aspects": ["recent industry background"],
+        "reason": "local papers are incomplete",
+        "parse_failed": False,
+    }), patch("app.agent.nodes.executor.get_settings", return_value=settings):
+        result = executor_node(state, db=MagicMock())
+
+    actions = [step["action"] for step in result["plan"]]
+    assert "search_web" not in actions
+
+
+def test_executor_evaluate_docs_sufficient_does_not_add_supplementary_steps():
+    plan = [
+        StepSpec(action="evaluate_docs", params={}, reason="check"),
+        StepSpec(action="reasoning_synthesis", params={}, reason="answer"),
+    ]
+    state = _base_state(
+        messages=[HumanMessage(content="explain attention")],
+        plan=plan,
+        plan_step_index=0,
+        retrieval_context=[Document(page_content="enough", metadata={"paper_id": "1706.03762"})],
+    )
+
+    with patch("app.agent.nodes.executor.evaluate_docs", return_value={
+        "sufficient": True,
+        "missing_aspects": [],
+        "reason": "enough",
+        "parse_failed": False,
+    }):
+        result = executor_node(state, db=MagicMock())
+
+    assert "plan" not in result

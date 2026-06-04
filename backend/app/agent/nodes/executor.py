@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import time
+from hashlib import sha1
 
 from langchain_core.documents import Document
 from sqlalchemy.orm import Session
 
 from app.agent.state import AgentState, StepTrace
 from app.agent.streaming import emit
+from app.core.config import get_settings
 from app.schemas.chat import ChatFilter
 from app.services.retriever import retrieve
 from app.tools.query_rewrite import rewrite_query
@@ -56,8 +58,36 @@ def _run_retrieve_local(
         "query_used": query_used,
         "requested_query": requested_query,
         "used_fallback": used_fallback,
+        "top_k": top_k,
     }
     return docs, meta
+
+
+def _doc_key(doc: Document) -> str:
+    md = doc.metadata or {}
+    for key in ("chunk_id", "id"):
+        if md.get(key):
+            return f"{key}:{md[key]}"
+    paper_id = md.get("paper_id") or ""
+    page_num = md.get("page_num") or ""
+    chunk_index = md.get("chunk_index") or ""
+    if paper_id or page_num or chunk_index:
+        return f"{paper_id}:{page_num}:{chunk_index}:{sha1((doc.page_content or '')[:200].encode()).hexdigest()}"
+    return sha1((doc.page_content or "").encode()).hexdigest()
+
+
+def _append_unique_documents(existing: list[Document], incoming: list[Document]) -> tuple[list[Document], int]:
+    seen = {_doc_key(d) for d in existing}
+    out = list(existing)
+    added = 0
+    for doc in incoming:
+        key = _doc_key(doc)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(doc)
+        added += 1
+    return out, added
 
 
 def _run_query_rewrite(params: dict, intent: dict, fallback_query: str) -> list[str]:
@@ -130,14 +160,23 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
     output_detail: dict = {}
     extra_plan_steps: list[dict] = []
     state_patch: dict = {}
+    trace_params = dict(params)
+    trace_reason = step.get("reason", "")
 
     if action == "retrieve_local":
         docs_scores, meta = _run_retrieve_local(params, fallback_query)
-        new_context.extend([d for d, _ in docs_scores])
+        new_context, added_count = _append_unique_documents(new_context, [d for d, _ in docs_scores])
         output_summary = (
             f"found {len(docs_scores)} chunks"
+            + (f", added {added_count} new" if added_count != len(docs_scores) else "")
             + (" (fallback)" if meta["used_fallback"] else "")
         )
+        trace_params = {
+            **trace_params,
+            "query": meta["query_used"],
+            "top_k": meta["top_k"],
+            "requested_query": meta["requested_query"],
+        }
         hits = []
         for d, score in docs_scores[:5]:
             md = d.metadata or {}
@@ -153,6 +192,7 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
             "query_used": meta["query_used"],
             "requested_query": meta["requested_query"],
             "used_fallback": meta["used_fallback"],
+            "added": added_count,
         }
         if meta["used_fallback"]:
             state_patch["is_fallback"] = True
@@ -160,7 +200,7 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
     elif action == "retrieve_arxiv":
         result = retrieve_arxiv_tool.invoke(params)
         arxiv_docs = _parse_arxiv_to_documents(result)
-        new_context.extend(arxiv_docs)
+        new_context, added_count = _append_unique_documents(new_context, arxiv_docs)
         output_summary = f"arXiv: {len(arxiv_docs)} papers added"
         output_detail = {
             "papers": [
@@ -169,16 +209,18 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
                 for d in arxiv_docs[:5]
             ],
             "total": len(arxiv_docs),
+            "added": added_count,
         }
 
     elif action == "search_web":
         result = search_web_tool.invoke(params)
         web_docs = _parse_web_to_documents(result)
-        new_context.extend(web_docs)
+        new_context, added_count = _append_unique_documents(new_context, web_docs)
         output_summary = f"web: {len(web_docs)} results added"
         output_detail = {
             "snippets": [(d.page_content or "")[:200] for d in web_docs[:3]],
             "total": len(web_docs),
+            "added": added_count,
         }
 
     elif action == "query_rewrite":
@@ -195,6 +237,7 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
 
     elif action == "evaluate_docs":
         query = (params.get("query") or "").strip() or fallback_query
+        trace_params = {**trace_params, "query": query}
         eval_result = _run_evaluate_docs(params, query, new_context)
         sufficient = bool(eval_result.get("sufficient"))
         parse_failed = bool(eval_result.get("parse_failed"))
@@ -217,6 +260,12 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
             missing = eval_result.get("missing_aspects", [])
             if missing:
                 output_summary += f", missing: {len(missing)} aspects"
+                if get_settings().tavily_api_key:
+                    extra_plan_steps.append({
+                        "action": "search_web",
+                        "params": {"query": missing[0], "max_results": 3},
+                        "reason": f"web supplement: {missing[0]}",
+                    })
                 for aspect in missing[:2]:
                     extra_plan_steps.append({
                         "action": "retrieve_local",
@@ -241,9 +290,12 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
     trace = StepTrace(
         node="executor_node",
         action=action,
-        input_summary=f"{action}({', '.join(f'{k}={v}' for k, v in list(params.items())[:3])})",
+        input_summary=f"{action}({', '.join(f'{k}={v}' for k, v in list(trace_params.items())[:3])})",
         output_summary=output_summary,
         duration_ms=duration,
+        params=trace_params,
+        reason=trace_reason,
+        detail=output_detail,
     )
     emit("tool_result", {
         "index": idx,

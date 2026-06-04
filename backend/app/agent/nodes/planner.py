@@ -44,6 +44,63 @@ def _parse_plan(content: str, max_steps: int) -> list[StepSpec]:
     ]
 
 
+def _supplement_query(query: str, issues: list[str], missing_aspects: list[str]) -> str:
+    for item in missing_aspects + issues + [query]:
+        text = str(item or "").strip()
+        if text:
+            return text
+    return query
+
+
+def _sanitize_supplementary_steps(
+    steps: list[StepSpec],
+    *,
+    query: str,
+    issues: list[str],
+    missing_aspects: list[str],
+) -> list[StepSpec]:
+    """Keep only executable retrieval/evaluation steps for the re-plan loop.
+
+    The graph itself runs synthesis after execution, so a re-planner emitting
+    ``reasoning_synthesis`` must not be sent to the executor as a tool.
+    """
+    fallback = _supplement_query(query, issues, missing_aspects)
+    allowed = {"retrieve_local", "retrieve_arxiv", "search_web", "evaluate_docs", "get_paper_detail", "get_paper_chunks"}
+    sanitized: list[StepSpec] = []
+    seen: set[tuple[str, str]] = set()
+    for step in steps:
+        action = step.get("action", "")
+        if action == "reasoning_synthesis" or action not in allowed:
+            continue
+        params = dict(step.get("params") or {})
+        if action in {"retrieve_local", "retrieve_arxiv", "search_web"}:
+            text = str(params.get("query") or "").strip() or fallback
+            params["query"] = text
+            if action == "retrieve_local":
+                params["top_k"] = params.get("top_k") or 4
+            if action == "search_web":
+                params["max_results"] = params.get("max_results") or 3
+        key = (action, str(params.get("query") or ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        sanitized.append(StepSpec(
+            action=action,
+            params=params,
+            reason=step.get("reason", "") or f"supplement: {params.get('query', fallback)}",
+        ))
+
+    if not any(step["action"].startswith("retrieve_") or step["action"] == "search_web" for step in sanitized):
+        sanitized.insert(0, StepSpec(
+            action="retrieve_local",
+            params={"query": fallback, "top_k": 4},
+            reason=f"supplement: {fallback}",
+        ))
+    if not any(step["action"] == "evaluate_docs" for step in sanitized):
+        sanitized.append(StepSpec(action="evaluate_docs", params={}, reason="check supplementary sufficiency"))
+    return sanitized[:3]
+
+
 def planner_node(state: AgentState, *, query: str) -> dict:
     """Generate structured execution plan based on intent."""
     t0 = time.perf_counter()
@@ -86,7 +143,13 @@ def re_planner_node(state: AgentState, *, query: str, issues: list[str], missing
         missing_aspects=json.dumps(missing_aspects, ensure_ascii=False),
     )
     response = llm.invoke(prompt)
-    new_steps = _parse_plan(response.content, 3)
+    raw_steps = _parse_plan(response.content, 3)
+    new_steps = _sanitize_supplementary_steps(
+        raw_steps,
+        query=query,
+        issues=issues,
+        missing_aspects=missing_aspects,
+    )
 
     duration = round((time.perf_counter() - t0) * 1000, 2)
     trace = StepTrace(
@@ -98,5 +161,6 @@ def re_planner_node(state: AgentState, *, query: str, issues: list[str], missing
     )
     return {
         "plan": state["plan"] + new_steps,
+        "plan_step_index": len(state["plan"]),
         "step_traces": state["step_traces"] + [trace],
     }

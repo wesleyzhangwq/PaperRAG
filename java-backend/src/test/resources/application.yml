@@ -1,0 +1,44 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:paperrag;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  sql:
+    init:
+      mode: always
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
+app:
+  paper:
+    max-upload-mb: 50
+  ingest:
+    chunk-size-tokens: 5
+  vector:
+    store: memory
+    embedding-dimensions: 32
+  qdrant:
+    url: http://localhost:6333
+    collection: paperrag_chunks_test
+    vector-size: 32
+  redis:
+    url: redis://localhost:6379
+    default-ttl-seconds: 300
+    null-ttl-seconds: 30
+    ttl-jitter-ratio: 0
+  rate-limit:
+    fixed-window-limit: 2
+    fixed-window-seconds: 60
+  rocketmq:
+    name-server: localhost:9876
+    ingest-topic: paperrag-ingest-test
+    consumer-group: paperrag-ingest-java-test

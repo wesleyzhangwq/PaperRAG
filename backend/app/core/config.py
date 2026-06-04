@@ -37,8 +37,8 @@ class Settings(BaseSettings):
     llm_api_key: Optional[str] = None
 
     # --- Cloud Embedding (Alibaba) ---
-    embedding_model: str = "text-embedding-v4"
-    embedding_api_base: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    embedding_model: str = "BAAI/bge-m3"
+    embedding_api_base: str = "https://api.siliconflow.cn/v1"
     embedding_api_key: Optional[str] = None
 
     # --- RAG ---
@@ -76,6 +76,8 @@ class Settings(BaseSettings):
     # --- Agent ---
     agent_max_plan_steps: int = 7
     agent_max_reflections: int = 2
+    agent_checkpoint_enabled: bool = True
+    agent_checkpoint_path: str = str(PROJECT_ROOT / "data" / "langgraph_checkpoints.sqlite")
 
     # --- Tools: external APIs ---
     tavily_api_key: Optional[str] = None
@@ -92,6 +94,15 @@ class Settings(BaseSettings):
 
     # --- Admin ---
     admin_api_key: Optional[str] = None  # protects /ingest; open if empty
+
+    # --- Public API guardrails ---
+    rate_limit_enabled: bool = True
+    rate_limit_requests: int = 60
+    rate_limit_window_seconds: int = 60
+    rate_limit_paths: str = "/chat,/upload"
+    api_auth_enabled: bool = False
+    api_keys: str = ""
+    api_auth_exempt_paths: str = "/health,/docs,/openapi.json,/redoc"
 
     # --- Observability ---
     observability_json_logs: bool = True
@@ -123,6 +134,18 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def rate_limit_path_list(self) -> tuple[str, ...]:
+        return tuple(o.strip() for o in self.rate_limit_paths.split(",") if o.strip())
+
+    @property
+    def api_key_list(self) -> tuple[str, ...]:
+        return tuple(o.strip() for o in self.api_keys.split(",") if o.strip())
+
+    @property
+    def api_auth_exempt_path_list(self) -> tuple[str, ...]:
+        return tuple(o.strip() for o in self.api_auth_exempt_paths.split(",") if o.strip())
 
 
 @lru_cache

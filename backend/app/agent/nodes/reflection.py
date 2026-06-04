@@ -27,6 +27,40 @@ def _get_llm() -> ChatOpenAI:
 def reflection_node(state: AgentState, *, query: str) -> dict:
     """Verify answer along 3 dimensions: citation, completeness, logic."""
     t0 = time.perf_counter()
+
+    evaluator = state.get("evaluator_result") or {}
+    if evaluator and not evaluator.get("parse_failed") and evaluator.get("sufficient") is False:
+        missing = [str(x) for x in evaluator.get("missing_aspects", []) if str(x).strip()]
+        reason = str(evaluator.get("reason", "")).strip()
+        issues = []
+        if missing:
+            issues.append("Evaluator reported missing aspects: " + "; ".join(missing))
+        if reason:
+            issues.append("Evaluator reason: " + reason)
+        if not issues:
+            issues.append("Evaluator reported that retrieved context is insufficient.")
+        reflection = ReflectionResult(
+            passed=False,
+            citation_ok=True,
+            completeness_ok=False,
+            logic_ok=True,
+            issues=issues,
+            fix_strategy="re_retrieve",
+        )
+        duration = round((time.perf_counter() - t0) * 1000, 2)
+        trace = StepTrace(
+            node="reflection_node",
+            action="self_reflection",
+            input_summary="using evaluator insufficiency signal",
+            output_summary=f"passed=False, strategy={reflection.get('fix_strategy')}",
+            duration_ms=duration,
+        )
+        return {
+            "reflection_result": reflection,
+            "reflection_count": state["reflection_count"] + 1,
+            "step_traces": state["step_traces"] + [trace],
+        }
+
     llm = _get_llm()
 
     paper_ids = set()
@@ -54,8 +88,12 @@ def reflection_node(state: AgentState, *, query: str) -> dict:
         )
     except (json.JSONDecodeError, TypeError):
         reflection = ReflectionResult(
-            passed=True, citation_ok=True, completeness_ok=True,
-            logic_ok=True, issues=[], fix_strategy=None,
+            passed=False,
+            citation_ok=False,
+            completeness_ok=False,
+            logic_ok=False,
+            issues=["Reflection output was not valid JSON; answer quality could not be verified."],
+            fix_strategy="re_retrieve",
         )
 
     duration = round((time.perf_counter() - t0) * 1000, 2)

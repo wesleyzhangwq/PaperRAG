@@ -75,6 +75,8 @@ export interface SourceCard {
 export interface RetrievalSummary {
   total_chunks: number
   total_papers: number
+  cited_papers?: number
+  web_results?: number
   main_topics: string[]
   is_fallback: boolean
   narrative: string
@@ -138,6 +140,50 @@ export interface Conversation {
   pinned: boolean
   created_at: string
   updated_at: string
+}
+
+export interface PaperSummary {
+  paper_id: string
+  title: string
+  authors: string[]
+  year: number
+  primary_category: string
+  categories: string[]
+  doi?: string | null
+  abstract?: string | null
+  arxiv_url?: string | null
+  ingest_status: string
+  num_chunks: number
+}
+
+export interface PaperListResponse {
+  total: number
+  items: PaperSummary[]
+}
+
+export interface UploadResponse {
+  job_id?: string | null
+  paper_id: string
+  status: string
+  num_chunks: number
+  message?: string | null
+}
+
+export interface UploadJob {
+  job_id: string
+  paper_id: string
+  filename: string
+  title: string
+  status: string
+  num_chunks: number
+  message?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface UploadJobListResponse {
+  total: number
+  items: UploadJob[]
 }
 
 export interface ServerMessage {

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.db.mysql import get_db
 from app.models.chat_history import ChatHistory
 from app.models.conversation import Conversation
+from app.utils.content_safety import strip_hidden_reasoning
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -148,7 +149,7 @@ def list_messages(cid: str, db: Session = Depends(get_db)) -> list[MessageOut]:
         out.append(MessageOut(
             id=r.id,
             role=r.role,
-            content=r.content,
+            content=strip_hidden_reasoning(r.content) if r.role == "assistant" else r.content,
             sources=sources,
             thinking=thinking,
             presentation=presentation,

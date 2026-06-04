@@ -3,7 +3,13 @@
     <div class="flex items-center gap-2 text-xs font-medium text-text-secondary mb-1">
       <span>🔍 检索概况</span>
       <span class="text-text-tertiary font-normal">
-        · {{ summary.total_chunks }} 个片段 · {{ summary.total_papers }} 篇论文
+        · {{ summary.total_chunks }} 个片段 · 检索到 {{ summary.total_papers }} 篇论文
+        <template v-if="summary.cited_papers !== undefined">
+          · 回答引用 {{ summary.cited_papers }} 篇
+        </template>
+        <template v-if="summary.web_results">
+          · 网络资料 {{ summary.web_results }} 条
+        </template>
       </span>
       <span
         v-if="summary.is_fallback"

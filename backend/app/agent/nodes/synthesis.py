@@ -1,7 +1,6 @@
 """Reasoning synthesis node: generate cited answer from context."""
 from __future__ import annotations
 
-import re
 import time
 
 from langchain_openai import ChatOpenAI
@@ -10,21 +9,7 @@ from app.agent.prompts.synthesis import SYNTHESIS_PROMPT, SYNTHESIS_WITH_ISSUES_
 from app.agent.state import AgentState, StepTrace
 from app.agent.streaming import emit
 from app.core.config import get_settings
-
-# Reasoning models (e.g. MiniMax-M2.7) sometimes leak <think>...</think> blocks
-# into the user-visible answer. Strip them after generation so they don't
-# pollute the markdown output — the live reasoning_token events still expose
-# them in the dedicated "model thinking" panel.
-_THINK_BLOCK_RE = re.compile(r"<think>[\s\S]*?</think>", re.IGNORECASE)
-_THINK_OPEN_RE = re.compile(r"<think>[\s\S]*$", re.IGNORECASE)  # unclosed tag tail
-
-
-def _strip_think(text: str) -> str:
-    if not text:
-        return text
-    text = _THINK_BLOCK_RE.sub("", text)
-    text = _THINK_OPEN_RE.sub("", text)
-    return text.lstrip("\n").rstrip()
+from app.utils.content_safety import strip_hidden_reasoning
 
 
 def _route_token(token: str, in_think: bool, reasoning_bucket: list[str]) -> tuple[str, bool]:
@@ -41,12 +26,9 @@ def _route_token(token: str, in_think: bool, reasoning_bucket: list[str]) -> tup
             if close == -1:
                 # whole remainder is reasoning
                 reasoning_bucket.append(token[i:])
-                # emit live reasoning event so the panel still updates
-                emit("reasoning_token", {"t": token[i:]})
                 i = len(token)
             else:
                 reasoning_bucket.append(token[i:close])
-                emit("reasoning_token", {"t": token[i:close]})
                 i = close + len("</think>")
                 in_think = False
         else:
@@ -116,7 +98,6 @@ def synthesis_node(state: AgentState, *, query: str, issues: list[str] | None = 
         rtok = rk.get("reasoning_content") if isinstance(rk, dict) else None
         if rtok:
             reasoning_chunks.append(rtok)
-            emit("reasoning_token", {"t": rtok})
         if chunk.content:
             chunks.append(chunk.content)
             # Route inline <think>...</think> tokens to reasoning, not answer.
@@ -124,7 +105,7 @@ def synthesis_node(state: AgentState, *, query: str, issues: list[str] | None = 
             if stripped:
                 emit("token", {"t": stripped})
 
-    answer = _strip_think("".join(chunks))
+    answer = strip_hidden_reasoning("".join(chunks))
 
     duration = round((time.perf_counter() - t0) * 1000, 2)
     trace = StepTrace(

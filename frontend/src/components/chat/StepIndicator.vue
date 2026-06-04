@@ -18,7 +18,7 @@
             {{ step.action }}
           </code>
           <span v-if="step.durationMs" class="text-text-tertiary tabular-nums">
-            {{ Math.round(step.durationMs) }}ms
+            {{ formatStepDuration(step.durationMs) }}
           </span>
         </div>
         <p
@@ -65,6 +65,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { ThinkingStep, ToolCallEvent, ToolResultEvent } from '../../types'
+import { formatStepDuration } from '../../utils/duration'
 
 const props = defineProps<{
   step: ThinkingStep

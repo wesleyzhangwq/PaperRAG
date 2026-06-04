@@ -2,7 +2,7 @@
 from unittest.mock import patch, MagicMock
 from langchain_core.documents import Document
 
-from app.agent.graph import build_agent_graph, run_agent_sync
+from app.agent.graph import build_agent_graph, run_agent_sync, route_after_reflection
 
 
 def test_graph_compiles():
@@ -48,3 +48,34 @@ def test_run_agent_sync_returns_response():
 
     assert result.answer is not None
     assert "1706.03762" in result.answer
+
+
+def test_route_after_reflection_passes_to_final_answer():
+    assert route_after_reflection({"reflection_result": {"passed": True}, "reflection_count": 0}, 2) == "final_answer"
+
+
+def test_route_after_reflection_re_generate_to_synthesis():
+    state = {
+        "reflection_result": {"passed": False, "fix_strategy": "re_generate"},
+        "reflection_count": 1,
+    }
+
+    assert route_after_reflection(state, 2) == "synthesis"
+
+
+def test_route_after_reflection_re_retrieve_to_re_planner():
+    state = {
+        "reflection_result": {"passed": False, "fix_strategy": "re_retrieve"},
+        "reflection_count": 1,
+    }
+
+    assert route_after_reflection(state, 2) == "re_planner"
+
+
+def test_route_after_reflection_stops_at_retry_budget():
+    state = {
+        "reflection_result": {"passed": False, "fix_strategy": "re_retrieve"},
+        "reflection_count": 2,
+    }
+
+    assert route_after_reflection(state, 2) == "final_answer"

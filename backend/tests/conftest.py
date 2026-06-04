@@ -3,3 +3,4 @@ import os
 
 os.environ.setdefault("MYSQL_HOST", "localhost")
 os.environ.setdefault("MYSQL_DATABASE", "paperrag_test")
+os.environ.setdefault("AGENT_CHECKPOINT_ENABLED", "false")

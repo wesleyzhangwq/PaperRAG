@@ -5,6 +5,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.graph import END, StateGraph
 from sqlalchemy.orm import Session
 
+from app.agent.checkpoint import agent_run_config, open_sync_checkpointer
 from app.agent.nodes.executor import executor_node
 from app.agent.nodes.final_answer import final_answer_node
 from app.agent.nodes.intent import intent_node
@@ -24,7 +25,25 @@ def _extract_query(state: AgentState) -> str:
     return ""
 
 
-def build_agent_graph(db: Session) -> object:
+def route_after_reflection(state: AgentState | dict, max_reflections: int) -> str:
+    """Route after reflection.
+
+    `re_retrieve` intentionally goes through `re_planner`: at this point the
+    executor index is already past retrieval steps, so the graph needs a fresh
+    supplementary plan before executing retrieval again.
+    """
+    reflection = state.get("reflection_result", {}) or {}
+    if reflection.get("passed", True):
+        return "final_answer"
+    if state.get("reflection_count", 0) >= max_reflections:
+        return "final_answer"
+    strategy = reflection.get("fix_strategy")
+    if strategy == "re_generate":
+        return "synthesis"
+    return "re_planner"
+
+
+def build_agent_graph(db: Session, *, checkpointer=None) -> object:
     """Build and compile the agentic RAG graph."""
     settings = get_settings()
 
@@ -74,17 +93,7 @@ def build_agent_graph(db: Session) -> object:
         return "synthesis"
 
     def _after_reflection(state: AgentState) -> str:
-        reflection = state.get("reflection_result", {})
-        if reflection.get("passed", True):
-            return "final_answer"
-        if state["reflection_count"] >= settings.agent_max_reflections:
-            return "final_answer"
-        strategy = reflection.get("fix_strategy")
-        if strategy == "re_generate":
-            # Context is sufficient but answer has issues — re-synthesize
-            return "synthesis"
-        # Default: re_retrieve or unrecognized → re_planner for new retrieval
-        return "re_planner"
+        return route_after_reflection(state, settings.agent_max_reflections)
 
     graph = StateGraph(AgentState)
 
@@ -107,11 +116,15 @@ def build_agent_graph(db: Session) -> object:
         _after_reflection,
         {"final_answer": "final_answer", "re_planner": "re_planner", "synthesis": "synthesis"},
     )
-    graph.add_edge("re_planner", "executor")
+    graph.add_conditional_edges(
+        "re_planner",
+        _should_continue_executing,
+        {"executor": "executor", "synthesis": "synthesis"},
+    )
     graph.add_edge("final_answer", "presentation")
     graph.add_edge("presentation", END)
 
-    return graph.compile()
+    return graph.compile(checkpointer=checkpointer)
 
 
 def run_agent_sync(
@@ -125,7 +138,7 @@ def run_agent_sync(
     `history` may be either a list of LangChain message objects (preferred)
     or a list of (role, content) tuples (legacy).
     """
-    graph = build_agent_graph(db)
+    thread_id = session_id or "default"
 
     messages = []
     if history:
@@ -152,8 +165,10 @@ def run_agent_sync(
         "sources": None,
     }
 
-    config = {"recursion_limit": 25}
-    result = graph.invoke(initial_state, config=config)
+    config = agent_run_config(thread_id)
+    with open_sync_checkpointer() as checkpointer:
+        graph = build_agent_graph(db, checkpointer=checkpointer)
+        result = graph.invoke(initial_state, config=config)
 
     answer = result.get("final_answer", "Agent failed to produce an answer.")
     sources = result.get("sources", [])

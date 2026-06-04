@@ -36,6 +36,9 @@ node_modules/
 dist/
 .vite/
 
+# Java / Maven
+target/
+
 # Data / artifacts (too big for git)
 data/raw_metadata/*
 data/pdfs/*
@@ -44,6 +47,9 @@ data/failed.txt
 data/metadata_filtered.json
 data/*.db
 data/*.db-journal
+data/*.sqlite
+data/*.sqlite-shm
+data/*.sqlite-wal
 !data/raw_metadata/.gitkeep
 !data/pdfs/.gitkeep
 

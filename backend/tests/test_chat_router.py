@@ -1,4 +1,5 @@
 """Test chat router endpoints."""
+from contextlib import asynccontextmanager
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
@@ -31,3 +32,45 @@ def test_chat_sync_returns_200():
     data = resp.json()
     assert "answer" in data
     assert data["answer"] == "Test answer [arxiv:1706.03762]"
+
+
+def test_chat_stream_uses_astream_events_and_thread_id():
+    seen_config = {}
+
+    class FakeGraph:
+        async def astream_events(self, initial_state, config, version="v2"):
+            seen_config.update(config)
+            assert version == "v2"
+            yield {"event": "on_custom_event", "name": "token", "data": {"t": "hello"}}
+            yield {
+                "event": "on_chain_stream",
+                "name": "LangGraph",
+                "data": {"chunk": {"intent": {"intent": {"type": "simple", "entities": [], "complexity": "low"}}}},
+            }
+            yield {
+                "event": "on_chain_stream",
+                "name": "LangGraph",
+                "data": {"chunk": {"synthesis": {"final_answer": "hello"}}},
+            }
+
+    @asynccontextmanager
+    async def fake_checkpointer():
+        yield None
+
+    with patch("app.routers.chat.build_agent_graph", return_value=FakeGraph()), \
+         patch("app.routers.chat.open_async_checkpointer", fake_checkpointer), \
+         patch("app.routers.chat.SessionLocal", return_value=MagicMock()), \
+         patch("app.routers.chat._ensure_conversation"), \
+         patch("app.routers.chat._load_history", return_value=[]), \
+         patch("app.routers.chat._persist_messages"):
+        resp = client.post(
+            "/chat/stream",
+            json={"query": "hello", "conversation_id": "conv-stream", "session_id": "conv-stream"},
+        )
+
+    assert resp.status_code == 200
+    assert "event: conversation" in resp.text
+    assert "event: token" in resp.text
+    assert "event: intent" in resp.text
+    assert "event: done" in resp.text
+    assert seen_config["configurable"]["thread_id"] == "conv-stream"

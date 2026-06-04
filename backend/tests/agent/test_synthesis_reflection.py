@@ -65,6 +65,45 @@ def test_reflection_fails_triggers_re_retrieve():
     assert result["reflection_count"] == 1
 
 
+def test_reflection_parse_failure_triggers_retry():
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = MagicMock(content="not valid json")
+    state = _base_state(final_answer="Answer with [arxiv:1706.03762]", reflection_count=0)
+
+    with patch("app.agent.nodes.reflection._get_llm", return_value=mock_llm):
+        result = reflection_node(state, query="what is attention")
+
+    assert result["reflection_result"]["passed"] is False
+    assert result["reflection_result"]["fix_strategy"] == "re_retrieve"
+    assert result["reflection_count"] == 1
+
+
+def test_reflection_respects_insufficient_evaluator_result():
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = MagicMock(
+        content='{"passed": true, "citation_ok": true, "completeness_ok": true, "logic_ok": true, "issues": [], "fix_strategy": null}'
+    )
+    state = _base_state(
+        final_answer="Answer with [arxiv:1706.03762]",
+        reflection_count=0,
+        evaluator_result={
+            "sufficient": False,
+            "missing_aspects": ["multi-head attention details"],
+            "reason": "retrieved context is incomplete",
+            "parse_failed": False,
+        },
+    )
+
+    with patch("app.agent.nodes.reflection._get_llm", return_value=mock_llm):
+        result = reflection_node(state, query="explain multi-head attention")
+
+    assert result["reflection_result"]["passed"] is False
+    assert result["reflection_result"]["fix_strategy"] == "re_retrieve"
+    assert "multi-head attention details" in result["reflection_result"]["issues"][0]
+    assert result["reflection_count"] == 1
+    mock_llm.invoke.assert_not_called()
+
+
 def test_final_answer_extracts_citations():
     state = _base_state(final_answer="This uses attention [arxiv:1706.03762] and BERT [arxiv:1810.04805]")
     mock_db = MagicMock()

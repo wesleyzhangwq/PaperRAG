@@ -41,6 +41,45 @@ export function useChat() {
 
     chat.isLoading = true
     chat.currentElapsedMs = 0
+    let tokenBuffer = ''
+    let tokenFlushTimer: ReturnType<typeof setInterval> | null = null
+
+    function appendContent(text: string) {
+      const cur = currentAssistant()
+      if (!cur || !text) return
+      convs.updateLastAssistant({ content: (cur.content || '') + text })
+    }
+
+    function flushTokenBuffer(force = false) {
+      if (!tokenBuffer) return
+      if (force) {
+        const rest = tokenBuffer
+        tokenBuffer = ''
+        appendContent(rest)
+        return
+      }
+      const sliceSize = tokenBuffer.length > 80 ? 8 : 4
+      const next = tokenBuffer.slice(0, sliceSize)
+      tokenBuffer = tokenBuffer.slice(sliceSize)
+      appendContent(next)
+    }
+
+    function startTokenFlush() {
+      if (tokenFlushTimer) return
+      tokenFlushTimer = setInterval(() => {
+        flushTokenBuffer(false)
+        if (!tokenBuffer && tokenFlushTimer) {
+          clearInterval(tokenFlushTimer)
+          tokenFlushTimer = null
+        }
+      }, 24)
+    }
+
+    function stopTokenFlush() {
+      if (!tokenFlushTimer) return
+      clearInterval(tokenFlushTimer)
+      tokenFlushTimer = null
+    }
 
     try {
       for await (const event of streamChat(query, convs.activeId)) {
@@ -131,24 +170,24 @@ export function useChat() {
           }
 
           case 'reasoning_token': {
-            const cur = currentAssistant()
-            if (!cur) break
-            convs.updateLastAssistant({ reasoning: (cur.reasoning || '') + event.data.t })
+            // Reasoning tokens can contain hidden prompt or chain-of-thought text.
+            // Keep them out of the normal product UI.
             break
           }
 
           case 'token': {
-            const cur = currentAssistant()
-            if (!cur) break
-            convs.updateLastAssistant({ content: (cur.content || '') + event.data.t })
+            tokenBuffer += event.data.t
+            startTokenFlush()
             break
           }
 
           case 'sources':
+            flushTokenBuffer(true)
             convs.updateLastAssistant({ sources: event.data.sources })
             break
 
           case 'presentation':
+            flushTokenBuffer(true)
             convs.updateLastAssistant({ presentation: event.data })
             break
 
@@ -158,6 +197,7 @@ export function useChat() {
             break
 
           case 'done': {
+            flushTokenBuffer(true)
             const cur = currentAssistant()
             if (cur) {
               const steps = (cur.thinking || []).map(s =>
@@ -169,6 +209,7 @@ export function useChat() {
           }
 
           case 'error':
+            flushTokenBuffer(true)
             convs.updateLastAssistant({
               content: `❌ 出错：${event.data.message}`,
               pending: false,
@@ -177,11 +218,15 @@ export function useChat() {
         }
       }
     } catch {
+      tokenBuffer = ''
+      stopTokenFlush()
       convs.updateLastAssistant({
         content: '❌ 连接中断，请重试。',
         pending: false,
       })
     } finally {
+      flushTokenBuffer(true)
+      stopTokenFlush()
       chat.isLoading = false
     }
   }

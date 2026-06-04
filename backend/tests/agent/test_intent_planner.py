@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 
 from app.agent.state import AgentState, StepSpec
 from app.agent.nodes.intent import intent_node
-from app.agent.nodes.planner import planner_node
+from app.agent.nodes.planner import planner_node, re_planner_node
 
 
 def _base_state(**overrides) -> AgentState:
@@ -65,3 +65,31 @@ def test_planner_node_generates_plan():
     assert len(result["plan"]) == 3
     assert result["plan"][0]["action"] == "retrieve_local"
     assert result["plan_step_index"] == 0
+
+
+def test_re_planner_sanitizes_synthesis_and_fills_missing_query():
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = MagicMock(content=json.dumps([
+        {"action": "reasoning_synthesis", "params": {}, "reason": "answer"},
+        {"action": "retrieve_local", "params": {}, "reason": "fallback retry"},
+        {"action": "evaluate_docs", "params": {}, "reason": "check"},
+    ]))
+    old_plan = [
+        StepSpec(action="retrieve_local", params={"query": "original", "top_k": 8}, reason="search"),
+        StepSpec(action="evaluate_docs", params={}, reason="check"),
+        StepSpec(action="reasoning_synthesis", params={}, reason="answer"),
+    ]
+    state = _base_state(plan=old_plan, plan_step_index=len(old_plan))
+
+    with patch("app.agent.nodes.planner._get_llm", return_value=mock_llm):
+        result = re_planner_node(
+            state,
+            query="tell me about Dr RTL",
+            issues=["missing details"],
+            missing_aspects=["Dr. RTL tool calling mechanism"],
+        )
+
+    appended = result["plan"][len(old_plan):]
+    assert result["plan_step_index"] == len(old_plan)
+    assert [step["action"] for step in appended] == ["retrieve_local", "evaluate_docs"]
+    assert appended[0]["params"]["query"] == "Dr. RTL tool calling mechanism"

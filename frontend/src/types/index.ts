@@ -1,4 +1,5 @@
 export interface StepTrace {
+  index?: number
   node: string
   action: string
   input_summary: string
@@ -117,6 +118,9 @@ export interface ThinkingStep {
   status: 'pending' | 'running' | 'done' | 'failed'
   outputSummary?: string
   durationMs?: number
+  detailParams?: Record<string, unknown>
+  detailResult?: Record<string, unknown>
+  detailSource?: 'presentation'
 }
 
 export interface Message {
@@ -161,6 +165,33 @@ export interface PaperListResponse {
   items: PaperSummary[]
 }
 
+export interface CorpusRepresentativePaper {
+  paper_id: string
+  title: string
+  year: number | null
+  primary_category: string
+  arxiv_url: string
+}
+
+export interface CorpusTopicBucket {
+  key: string
+  label: string
+  description: string
+  paper_count: number
+  chunk_count: number
+  representative_papers: CorpusRepresentativePaper[]
+}
+
+export interface CorpusOverviewResponse {
+  total_papers: number
+  total_chunks: number
+  year_min: number | null
+  year_max: number | null
+  topic_buckets: CorpusTopicBucket[]
+  suggested_questions: string[]
+  generated_at: string
+}
+
 export interface UploadResponse {
   job_id?: string | null
   paper_id: string
@@ -193,6 +224,7 @@ export interface ServerMessage {
   sources: Source[]
   thinking: StepTrace[]
   presentation?: Presentation | null
+  elapsed_ms?: number | null
   created_at: string
 }
 

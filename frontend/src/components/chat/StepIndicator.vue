@@ -42,18 +42,18 @@
         <span class="text-text-tertiary">reason: </span>{{ step.reason }}
       </div>
 
-      <div v-if="call?.params && Object.keys(call.params).length > 0">
+      <div v-if="details.params">
         <div class="text-text-tertiary mb-0.5">params:</div>
-        <pre class="bg-bg-card rounded px-2 py-1 overflow-x-auto whitespace-pre-wrap break-words">{{ formatParams(call.params) }}</pre>
+        <pre class="bg-bg-card rounded px-2 py-1 overflow-x-auto whitespace-pre-wrap break-words">{{ formatParams(details.params) }}</pre>
       </div>
 
-      <div v-if="result?.detail && hasDetail">
+      <div v-if="details.result">
         <div class="text-text-tertiary mb-0.5">result:</div>
-        <pre class="bg-bg-card rounded px-2 py-1 overflow-x-auto whitespace-pre-wrap break-words">{{ formatDetail(result.detail) }}</pre>
+        <pre class="bg-bg-card rounded px-2 py-1 overflow-x-auto whitespace-pre-wrap break-words">{{ formatDetail(details.result) }}</pre>
       </div>
 
       <div
-        v-if="!call && !result && step.status !== 'pending'"
+        v-if="!hasAnyDetails && step.status !== 'pending'"
         class="text-text-tertiary italic"
       >
         没有更多细节
@@ -66,6 +66,7 @@
 import { computed, ref } from 'vue'
 import type { ThinkingStep, ToolCallEvent, ToolResultEvent } from '../../types'
 import { formatStepDuration } from '../../utils/duration'
+import { hasResolvedStepDetails, resolveStepDetails } from '../../utils/thinking'
 
 const props = defineProps<{
   step: ThinkingStep
@@ -91,9 +92,8 @@ const actionLabels: Record<string, string> = {
 }
 
 const actionLabel = computed(() => actionLabels[props.step.action] || props.step.action)
-const hasDetail = computed(() =>
-  props.result?.detail && Object.keys(props.result.detail).length > 0
-)
+const details = computed(() => resolveStepDetails(props.step, props.call, props.result))
+const hasAnyDetails = computed(() => hasResolvedStepDetails(details.value))
 
 function formatParams(p: Record<string, unknown>): string {
   try { return JSON.stringify(p, null, 2) } catch { return String(p) }

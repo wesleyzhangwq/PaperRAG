@@ -1,20 +1,23 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import * as convApi from '../api/conversations'
+import { presentationStepsToThinking } from '../utils/thinking'
 import type { Conversation, Message, ServerMessage } from '../types'
 
 const ACTIVE_KEY = 'paperrag.activeConversation'
 
 function serverMessagesToLocal(rows: ServerMessage[]): Message[] {
   return rows.map(r => {
-    const thinking = (r.thinking || []).map((t, i) => ({
-      index: i,
-      action: t.action,
-      reason: '',
-      status: 'done' as const,
-      outputSummary: t.output_summary,
-      durationMs: t.duration_ms,
-    }))
+    const thinking = r.presentation?.steps?.length
+      ? presentationStepsToThinking(r.presentation)
+      : (r.thinking || []).map((t, i) => ({
+          index: i,
+          action: t.action,
+          reason: '',
+          status: 'done' as const,
+          outputSummary: t.output_summary,
+          durationMs: t.duration_ms,
+        }))
     return {
       id: `srv-${r.id}`,
       role: r.role,
@@ -22,7 +25,7 @@ function serverMessagesToLocal(rows: ServerMessage[]): Message[] {
       sources: r.sources || [],
       thinking,
       presentation: r.presentation || null,
-      elapsedMs: deriveElapsedMs(thinking, r.presentation),
+      elapsedMs: r.elapsed_ms ?? deriveElapsedMs(thinking, r.presentation),
       timestamp: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
     }
   })

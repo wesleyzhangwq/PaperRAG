@@ -1,9 +1,13 @@
 <template>
   <div ref="listRef" class="flex-1 overflow-y-auto px-4 py-6" @scroll="handleScroll">
     <div class="max-w-3xl mx-auto space-y-5">
-      <div v-if="messages.length === 0" class="text-center py-20 text-text-tertiary text-sm">
-        发送一条消息开始对话吧～
-      </div>
+      <CorpusOverviewCard
+        v-if="messages.length === 0"
+        :overview="overview"
+        :loading="overviewLoading"
+        :error="overviewError"
+        @ask="$emit('ask', $event)"
+      />
 
       <template v-for="msg in messages" :key="msg.id">
         <UserBubble v-if="msg.role === 'user'" :content="msg.content" />
@@ -36,13 +40,20 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick } from 'vue'
-import type { Message } from '../../types'
+import type { CorpusOverviewResponse, Message } from '../../types'
 import { useConversationsStore } from '../../stores/conversations'
 import UserBubble from './UserBubble.vue'
 import ThinkingCard from './ThinkingCard.vue'
 import AnswerCard from '../answer/AnswerCard.vue'
+import CorpusOverviewCard from './CorpusOverviewCard.vue'
 
-const props = defineProps<{ messages: Message[] }>()
+const props = defineProps<{
+  messages: Message[]
+  overview: CorpusOverviewResponse | null
+  overviewLoading: boolean
+  overviewError: string
+}>()
+defineEmits<{ ask: [question: string] }>()
 const convs = useConversationsStore()
 
 const listRef = ref<HTMLElement>()

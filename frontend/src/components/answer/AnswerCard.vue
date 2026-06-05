@@ -136,7 +136,10 @@ const props = defineProps<{
   messageId?: number
 }>()
 
-const rendered = computed(() => renderMarkdown(props.content, props.sources))
+const displayContent = computed(() =>
+  props.streaming ? props.content : (props.presentation?.answer || props.content)
+)
+const rendered = computed(() => renderMarkdown(displayContent.value, props.sources))
 const cards = computed(() => props.presentation?.sources || [])
 const workedLabel = computed(() => {
   if (props.streaming || !props.elapsedMs) return ''

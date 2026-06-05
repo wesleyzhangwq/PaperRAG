@@ -90,8 +90,13 @@ const doneCount = computed(
   () => props.steps.filter(s => s.status === 'done' || s.status === 'failed').length
 )
 
+const completedStepMs = computed(() =>
+  props.steps.reduce((sum, step) => sum + (step.durationMs || 0), 0)
+)
+
 const formatElapsed = computed(() => {
-  const s = (displayElapsedMs.value || 0) / 1000
+  const ms = props.running ? displayElapsedMs.value : completedStepMs.value
+  const s = (ms || 0) / 1000
   if (s < 60) return `${s.toFixed(1)}s`
   const m = Math.floor(s / 60)
   const r = (s - m * 60).toFixed(0)

@@ -64,6 +64,33 @@ class PaperListResponse(BaseModel):
     items: list[PaperSummary]
 
 
+class CorpusRepresentativePaper(BaseModel):
+    paper_id: str
+    title: str
+    year: Optional[int] = None
+    primary_category: str
+    arxiv_url: str
+
+
+class CorpusTopicBucket(BaseModel):
+    key: str
+    label: str
+    description: str
+    paper_count: int
+    chunk_count: int
+    representative_papers: list[CorpusRepresentativePaper] = []
+
+
+class CorpusOverviewResponse(BaseModel):
+    total_papers: int
+    total_chunks: int
+    year_min: Optional[int] = None
+    year_max: Optional[int] = None
+    topic_buckets: list[CorpusTopicBucket] = []
+    suggested_questions: list[str] = []
+    generated_at: datetime
+
+
 class UploadResponse(BaseModel):
     job_id: Optional[str] = None
     paper_id: str

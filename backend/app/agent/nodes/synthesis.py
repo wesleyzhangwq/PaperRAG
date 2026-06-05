@@ -91,6 +91,7 @@ def synthesis_node(state: AgentState, *, query: str, issues: list[str] | None = 
     chunks: list[str] = []
     reasoning_chunks: list[str] = []
     in_think = False  # state machine for inline <think>...</think> blocks
+    emit("answer_start", {"attempt": int(state.get("reflection_count", 0) or 0) + 1, "reset": True})
     for chunk in llm.stream(prompt):
         # Reasoning models (e.g. MiniMax-M2.7) may expose reasoning tokens
         # via additional_kwargs.reasoning_content (incremental, OpenAI-style).

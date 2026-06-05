@@ -1,6 +1,8 @@
 """Test search_web tool."""
 from unittest.mock import patch, MagicMock
 
+from requests.exceptions import SSLError
+
 from app.tools.search_web import search_web_tool
 
 
@@ -24,3 +26,15 @@ def test_search_web_no_api_key():
         result = search_web_tool.invoke({"query": "test"})
 
     assert "not configured" in result.lower()
+
+
+def test_search_web_handles_tavily_ssl_error():
+    with patch("app.tools.search_web.get_settings") as mock_settings, \
+         patch("tavily.TavilyClient") as MockClient:
+        mock_settings.return_value.tavily_api_key = "test-key"
+        MockClient.return_value.search.side_effect = SSLError("unexpected eof")
+
+        result = search_web_tool.invoke({"query": "latest transformer history", "max_results": 3})
+
+    assert "web search unavailable" in result.lower()
+    assert "unexpected eof" in result.lower()

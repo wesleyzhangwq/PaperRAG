@@ -14,6 +14,7 @@ export type SSEEvent =
   | { type: 'tool_result'; data: ToolResultEvent }
   | { type: 'reflection'; data: SSEReflection }
   | { type: 're_plan'; data: { new_steps: unknown[] } }
+  | { type: 'answer_start'; data: { attempt: number; reset?: boolean } }
   | { type: 'reasoning_token'; data: { t: string } }
   | { type: 'token'; data: { t: string } }
   | { type: 'sources'; data: { sources: Source[] } }

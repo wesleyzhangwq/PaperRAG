@@ -1,5 +1,8 @@
 """Test chat router endpoints."""
+import json
 from contextlib import asynccontextmanager
+from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
@@ -74,3 +77,25 @@ def test_chat_stream_uses_astream_events_and_thread_id():
     assert "event: intent" in resp.text
     assert "event: done" in resp.text
     assert seen_config["configurable"]["thread_id"] == "conv-stream"
+
+
+def test_conversation_messages_expose_persisted_elapsed_ms():
+    row = SimpleNamespace(
+        id=5,
+        role="assistant",
+        content="answer",
+        sources_json=None,
+        thinking_json=json.dumps({"traces": [], "presentation": None, "elapsed_ms": 282000}),
+        created_at=datetime(2026, 6, 5, 12, 0, 0),
+    )
+    db = MagicMock()
+    db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [row]
+
+    def override_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_db
+    resp = client.get("/conversations/conv-elapsed/messages")
+
+    assert resp.status_code == 200
+    assert resp.json()[0]["elapsed_ms"] == 282000

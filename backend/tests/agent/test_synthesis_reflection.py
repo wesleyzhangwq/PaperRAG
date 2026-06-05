@@ -39,6 +39,25 @@ def test_synthesis_generates_answer():
     assert len(result["step_traces"]) == 1
 
 
+def test_synthesis_emits_answer_start_before_tokens():
+    mock_llm = MagicMock()
+    mock_llm.stream.return_value = [MagicMock(content="Final answer [arxiv:1706.03762]")]
+    state = _base_state(reflection_count=1)
+
+    with patch("app.agent.nodes.synthesis._get_llm", return_value=mock_llm), \
+         patch("app.agent.nodes.synthesis.emit") as mock_emit:
+        synthesis_node(state, query="what is attention")
+
+    assert mock_emit.call_args_list[0].args == (
+        "answer_start",
+        {"attempt": 2, "reset": True},
+    )
+    assert mock_emit.call_args_list[1].args == (
+        "token",
+        {"t": "Final answer [arxiv:1706.03762]"},
+    )
+
+
 def test_reflection_passes():
     mock_llm = MagicMock()
     mock_llm.invoke.return_value = MagicMock(

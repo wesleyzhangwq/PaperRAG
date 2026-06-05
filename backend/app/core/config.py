@@ -82,17 +82,6 @@ class Settings(BaseSettings):
     # --- Tools: external APIs ---
     tavily_api_key: Optional[str] = None
     arxiv_max_results: int = 5
-    openalex_mailto: Optional[str] = None
-    semantic_scholar_api_key: Optional[str] = None
-
-    # --- Weekly paper radar ---
-    weekly_radar_topic: str = "agentic_rag_scientific_ai"
-    weekly_radar_top_k: int = 10
-    weekly_radar_window_days: int = 7
-    weekly_radar_categories: str = "cs.CL,cs.AI,cs.IR,cs.LG"
-    weekly_radar_max_candidates: int = 240
-    weekly_radar_delete_pdfs: bool = True
-    weekly_radar_output_dir: str = str(PROJECT_ROOT / "data" / "weekly_paper_radar")
 
     # --- Optional separate models for agent nodes ---
     planner_model: Optional[str] = None
@@ -157,10 +146,6 @@ class Settings(BaseSettings):
     @property
     def api_auth_exempt_path_list(self) -> tuple[str, ...]:
         return tuple(o.strip() for o in self.api_auth_exempt_paths.split(",") if o.strip())
-
-    @property
-    def weekly_radar_category_list(self) -> tuple[str, ...]:
-        return tuple(o.strip() for o in self.weekly_radar_categories.split(",") if o.strip())
 
 
 @lru_cache

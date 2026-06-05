@@ -51,9 +51,12 @@ def _paper(
     return SimpleNamespace(
         paper_id=paper_id,
         title=title,
+        authors=[],
         year=year,
         primary_category=primary_category,
         categories=categories,
+        doi=None,
+        abstract=None,
         ingest_status="ok",
         num_chunks=num_chunks,
     )
@@ -122,3 +125,19 @@ def test_papers_overview_handles_empty_corpus() -> None:
     assert data["year_max"] is None
     assert data["topic_buckets"] == []
     assert data["suggested_questions"] == ["如何上传第一篇论文？"]
+
+
+def test_paper_summary_includes_topic_bucket_label() -> None:
+    from app.routers.papers import _to_summary
+
+    summary = _to_summary(_paper(
+        "2511.16043",
+        "Agent0: Unleashing Self-Evolving Agents from Zero Data",
+        year=2025,
+        categories=["cs.LG", "agents_reasoning"],
+        primary_category="cs.LG",
+        num_chunks=95,
+    ))
+
+    assert summary.topic_bucket_key == "agents_reasoning"
+    assert summary.topic_bucket_label == "Agents / Reasoning"

@@ -1,29 +1,32 @@
-"""Allow users to upload their own PDFs and auto-ingest."""
+"""Import papers into the local PaperRAG corpus."""
 from __future__ import annotations
 
-import re
-import shutil
 import uuid
 from datetime import datetime
-from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
 from app.db.mysql import SessionLocal, get_db
 from app.models.paper import Paper
 from app.models.upload_job import UploadJob
-from app.schemas.chat import UploadJobListResponse, UploadJobResponse, UploadResponse
+from app.schemas.chat import (
+    ArxivImportBatchResponse,
+    ArxivImportRequest,
+    UploadJobListResponse,
+    UploadJobResponse,
+    UploadResponse,
+)
+from app.services.arxiv_import import (
+    download_arxiv_pdf,
+    fetch_arxiv_record,
+    normalize_arxiv_id,
+)
 from app.services.ingest import _ingest_one
 
 router = APIRouter(prefix="/upload", tags=["upload"])
-
-settings = get_settings()
-
-_SAFE_ID = re.compile(r"[^a-zA-Z0-9_\-\.]")
-_MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 
 
 def _upload_error(code: str, user_message: str, action_hint: str, retryable: bool) -> dict:
@@ -33,12 +36,6 @@ def _upload_error(code: str, user_message: str, action_hint: str, retryable: boo
         "action_hint": action_hint,
         "retryable": retryable,
     }
-
-
-def _safe_paper_id(name: str) -> str:
-    base = Path(name).stem or "upload"
-    cleaned = _SAFE_ID.sub("_", base)[:40] or "upload"
-    return f"user_{cleaned}_{uuid.uuid4().hex[:8]}"
 
 
 def _to_job_response(job: UploadJob) -> UploadJobResponse:
@@ -55,26 +52,84 @@ def _to_job_response(job: UploadJob) -> UploadJobResponse:
     )
 
 
-def _run_upload_ingest_job(job_id: str, record: dict) -> None:
+def _dedupe_arxiv_ids(raw_ids: list[str]) -> list[str]:
+    seen: set[str] = set()
+    arxiv_ids: list[str] = []
+    for raw_id in raw_ids:
+        arxiv_id = normalize_arxiv_id(raw_id)
+        if arxiv_id not in seen:
+            seen.add(arxiv_id)
+            arxiv_ids.append(arxiv_id)
+    return arxiv_ids
+
+
+def _paper_is_ingested(paper: Paper | None) -> bool:
+    return paper is not None and paper.ingest_status == "ok" and (paper.num_chunks or 0) > 0
+
+
+def _new_upload_job(
+    *,
+    job_id: str,
+    paper_id: str,
+    filename: str,
+    title: str,
+    status: str,
+    num_chunks: int,
+    message: str,
+) -> UploadJob:
+    now = datetime.utcnow()
+    return UploadJob(
+        job_id=job_id,
+        paper_id=paper_id,
+        filename=filename,
+        title=title,
+        status=status,
+        num_chunks=num_chunks,
+        message=message,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def _run_arxiv_import_job(job_id: str, arxiv_id: str) -> None:
     db: Session = SessionLocal()
     try:
         job = db.query(UploadJob).filter(UploadJob.job_id == job_id).one_or_none()
         if job is None:
             return
         job.status = "running"
+        job.message = "fetching_metadata"
         job.updated_at = datetime.utcnow()
         db.commit()
 
-        pid, ingest_status = _ingest_one(db, record, force=True)
+        record = fetch_arxiv_record(arxiv_id)
+        job = db.query(UploadJob).filter(UploadJob.job_id == job_id).one()
+        job.paper_id = record["paper_id"]
+        job.filename = f"{record['paper_id']}.pdf"
+        job.title = record.get("title") or record["paper_id"]
+        job.message = "downloading_pdf"
+        job.updated_at = datetime.utcnow()
+        db.commit()
+
+        record = download_arxiv_pdf(record)
+        job = db.query(UploadJob).filter(UploadJob.job_id == job_id).one()
+        job.message = "ingesting"
+        job.updated_at = datetime.utcnow()
+        db.commit()
+
+        pid, ingest_status = _ingest_one(db, record, force=False)
         paper = db.query(Paper).filter_by(paper_id=pid).one_or_none()
         job = db.query(UploadJob).filter(UploadJob.job_id == job_id).one()
-        job.status = "succeeded" if ingest_status in {"ok", "skipped"} else "failed"
+        if ingest_status == "ok":
+            job.status = "succeeded"
+            job.message = "ok"
+        elif ingest_status == "skipped":
+            job.status = "skipped"
+            job.message = "already_exists"
+        else:
+            job.status = "failed"
+            job.message = paper.ingest_error if paper is not None else "failed"
         job.num_chunks = paper.num_chunks if paper is not None else 0
-        job.message = (
-            paper.ingest_error
-            if paper is not None and ingest_status == "failed"
-            else ingest_status
-        )
         job.updated_at = datetime.utcnow()
         db.commit()
     except Exception as exc:
@@ -89,83 +144,80 @@ def _run_upload_ingest_job(job_id: str, record: dict) -> None:
         db.close()
 
 
-@router.post("", response_model=UploadResponse)
-async def upload_pdf(
+@router.post("/arxiv", response_model=ArxivImportBatchResponse)
+def import_arxiv_papers(
+    request: ArxivImportRequest,
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
-    title: str | None = Form(None),
     db: Session = Depends(get_db),
-) -> UploadResponse:
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
+) -> ArxivImportBatchResponse:
+    try:
+        arxiv_ids = _dedupe_arxiv_ids(request.arxiv_ids)
+    except ValueError as exc:
         raise HTTPException(
             status_code=400,
             detail=_upload_error(
-                "invalid_file_type",
-                "只支持上传 PDF 文件。",
-                "请选择 .pdf 文件后重新上传。",
+                "invalid_arxiv_id",
+                "请输入有效的 arXiv ID 或 arXiv URL。",
+                "例如 2511.16043、arXiv:2511.16043v2 或 https://arxiv.org/abs/2511.16043。",
                 False,
             ),
-        )
+        ) from exc
 
-    # Check file size (read size header or first-pass read)
-    if file.size and file.size > _MAX_UPLOAD_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=_upload_error(
-                "file_too_large",
-                f"文件过大，当前最大支持 {_MAX_UPLOAD_BYTES // (1024*1024)} MB。",
-                "请压缩 PDF 或拆分后重新上传。",
-                False,
-            ),
-        )
+    items: list[UploadResponse] = []
+    for arxiv_id in arxiv_ids:
+        existing = db.query(Paper).filter(Paper.paper_id == arxiv_id).one_or_none()
+        job_id = uuid.uuid4().hex
+        if _paper_is_ingested(existing):
+            db.add(_new_upload_job(
+                job_id=job_id,
+                paper_id=arxiv_id,
+                filename=f"{arxiv_id}.pdf",
+                title=existing.title or arxiv_id,
+                status="skipped",
+                num_chunks=existing.num_chunks or 0,
+                message="already_exists",
+            ))
+            items.append(UploadResponse(
+                job_id=job_id,
+                paper_id=arxiv_id,
+                status="skipped",
+                num_chunks=existing.num_chunks or 0,
+                message="already_exists",
+            ))
+            continue
 
-    filename = file.filename
-    paper_id = _safe_paper_id(filename)
-    job_id = uuid.uuid4().hex
+        db.add(_new_upload_job(
+            job_id=job_id,
+            paper_id=arxiv_id,
+            filename=f"{arxiv_id}.pdf",
+            title=arxiv_id,
+            status="queued",
+            num_chunks=0,
+            message="queued",
+        ))
+        items.append(UploadResponse(
+            job_id=job_id,
+            paper_id=arxiv_id,
+            status="queued",
+            num_chunks=0,
+            message="queued",
+        ))
+        background_tasks.add_task(_run_arxiv_import_job, job_id, arxiv_id)
 
-    pdf_dir = Path(settings.pdf_dir)
-    pdf_dir.mkdir(parents=True, exist_ok=True)
-    dest = pdf_dir / f"{paper_id}.pdf"
-
-    with dest.open("wb") as out:
-        shutil.copyfileobj(file.file, out)
-
-    record = {
-        "paper_id": paper_id,
-        "title": title or Path(filename).stem,
-        "authors": [],
-        "year": 0,
-        "primary_category": "user.upload",
-        "categories": ["user.upload"],
-        "doi": None,
-        "abstract": None,
-        "pdf_url": None,
-        "pdf_path": str(dest.relative_to(Path(settings.data_dir).parent)),
-        "entry_id": None,
-        "published": None,
-        "updated": None,
-    }
-
-    db.add(UploadJob(
-        job_id=job_id,
-        paper_id=paper_id,
-        filename=filename,
-        title=record["title"],
-        status="queued",
-        num_chunks=0,
-        message="queued",
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
-    ))
     db.commit()
-    background_tasks.add_task(_run_upload_ingest_job, job_id, record)
+    return ArxivImportBatchResponse(total=len(items), items=items)
 
-    return UploadResponse(
-        job_id=job_id,
-        paper_id=paper_id,
-        status="queued",
-        num_chunks=0,
-        message="queued",
+
+@router.post("")
+async def upload_pdf_disabled() -> JSONResponse:
+    return JSONResponse(
+        status_code=410,
+        content=_upload_error(
+            "pdf_upload_disabled",
+            "本地 PDF 上传已关闭。",
+            "请输入 arXiv ID 或 arXiv URL，系统会自动拉取官方 metadata 和 PDF。",
+            False,
+        ),
     )
 
 

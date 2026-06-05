@@ -1,13 +1,11 @@
 import api from './client'
-import type { UploadJob, UploadJobListResponse, UploadResponse } from '../types'
+import type { ArxivImportBatchResponse, UploadJob, UploadJobListResponse } from '../types'
 
-export async function uploadPdf(file: File, title?: string): Promise<UploadResponse> {
-  const form = new FormData()
-  form.append('file', file)
-  if (title?.trim()) form.append('title', title.trim())
-  const { data } = await api.post<UploadResponse>('/upload', form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 120000,
+export async function importArxivPapers(arxivIds: string[]): Promise<ArxivImportBatchResponse> {
+  const { data } = await api.post<ArxivImportBatchResponse>('/upload/arxiv', {
+    arxiv_ids: arxivIds,
+  }, {
+    timeout: 30000,
   })
   return data
 }

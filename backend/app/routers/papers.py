@@ -85,6 +85,8 @@ OTHER_TOPIC = TopicDefinition(
 
 
 def _to_summary(p: Paper) -> PaperSummary:
+    topic_key = _bucket_key_for_paper(p)
+    topic = TOPIC_BY_KEY.get(topic_key, OTHER_TOPIC)
     return PaperSummary(
         paper_id=p.paper_id,
         title=p.title or "",
@@ -92,6 +94,8 @@ def _to_summary(p: Paper) -> PaperSummary:
         year=p.year,
         primary_category=p.primary_category or "",
         categories=p.categories or [],
+        topic_bucket_key=topic.key,
+        topic_bucket_label=topic.label,
         doi=p.doi,
         abstract=p.abstract,
         arxiv_url=f"https://arxiv.org/abs/{p.paper_id}",

@@ -83,11 +83,15 @@
           <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div class="min-w-0">
               <h3 class="text-sm font-medium text-text-primary leading-snug">{{ paper.title }}</h3>
-              <p class="mt-1 text-xs text-text-tertiary">
-                {{ paper.authors?.slice(0, 4).join(', ') || 'Unknown authors' }}
-                <span v-if="paper.year"> · {{ paper.year }}</span>
-                <span v-if="paper.primary_category"> · {{ paper.primary_category }}</span>
-              </p>
+              <div class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-text-tertiary">
+                <span>{{ paper.authors?.slice(0, 4).join(', ') || 'Unknown authors' }}</span>
+                <span v-if="paper.year">· {{ paper.year }}</span>
+                <span
+                  v-if="paper.topic_bucket_label"
+                  class="rounded-sm border border-border bg-bg-hover px-1.5 py-0.5 text-text-secondary"
+                >{{ paper.topic_bucket_label }}</span>
+                <span v-if="paper.primary_category">arXiv: {{ paper.primary_category }}</span>
+              </div>
             </div>
             <a
               v-if="paper.arxiv_url"

@@ -52,6 +52,8 @@ class PaperSummary(BaseModel):
     year: int
     primary_category: str
     categories: list[str] = []
+    topic_bucket_key: str
+    topic_bucket_label: str
     doi: Optional[str] = None
     abstract: Optional[str] = None
     arxiv_url: Optional[str] = None
@@ -97,6 +99,15 @@ class UploadResponse(BaseModel):
     status: str
     num_chunks: int
     message: Optional[str] = None
+
+
+class ArxivImportRequest(BaseModel):
+    arxiv_ids: list[str] = Field(..., min_length=1, max_length=20)
+
+
+class ArxivImportBatchResponse(BaseModel):
+    total: int
+    items: list[UploadResponse]
 
 
 class UploadJobResponse(BaseModel):

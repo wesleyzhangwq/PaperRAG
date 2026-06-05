@@ -153,6 +153,8 @@ export interface PaperSummary {
   year: number
   primary_category: string
   categories: string[]
+  topic_bucket_key: string
+  topic_bucket_label: string
   doi?: string | null
   abstract?: string | null
   arxiv_url?: string | null
@@ -198,6 +200,11 @@ export interface UploadResponse {
   status: string
   num_chunks: number
   message?: string | null
+}
+
+export interface ArxivImportBatchResponse {
+  total: number
+  items: UploadResponse[]
 }
 
 export interface UploadJob {

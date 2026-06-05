@@ -1,11 +1,9 @@
 <template>
   <section class="w-full max-w-3xl mx-auto text-left">
-    <div class="mb-5">
+    <div v-if="showHeader" class="mb-4">
       <p class="text-xs font-medium uppercase text-text-tertiary">Corpus Overview</p>
-      <h2 class="mt-2 text-2xl font-semibold text-text-primary">这套 RAG 现在收录了什么？</h2>
-      <p class="mt-2 max-w-2xl text-sm leading-6 text-text-secondary">
-        先快速看一眼本地论文库覆盖范围，再决定从哪个方向提问。
-      </p>
+      <h2 class="mt-2 text-2xl font-semibold text-text-primary">{{ heading }}</h2>
+      <p class="mt-2 max-w-2xl text-sm leading-6 text-text-secondary">{{ subtitle }}</p>
     </div>
 
     <div v-if="loading" class="rounded-card border border-border bg-bg-card p-5">
@@ -60,8 +58,29 @@
         </div>
       </div>
 
-      <div class="divide-y divide-border">
-        <article v-for="bucket in overview.topic_buckets" :key="bucket.key" class="p-4">
+      <div v-if="variant === 'compact'" class="p-4">
+        <p class="text-sm leading-6 text-text-secondary">
+          当前语料重点覆盖 {{ compactTopicText }}。
+        </p>
+        <div class="mt-4 grid gap-2 sm:grid-cols-3">
+          <div
+            v-for="bucket in visibleBuckets"
+            :key="bucket.key"
+            class="rounded-md border border-border bg-bg-primary p-3"
+          >
+            <div class="flex items-center justify-between gap-2">
+              <p class="truncate text-sm font-medium text-text-primary">{{ bucket.label }}</p>
+              <span class="text-xs text-text-tertiary">{{ bucket.paper_count }}</span>
+            </div>
+            <div class="mt-2 h-1.5 rounded-full bg-bg-hover">
+              <div class="h-1.5 rounded-full bg-accent" :style="{ width: topicWidth(bucket.paper_count) }"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-else class="divide-y divide-border">
+        <article v-for="bucket in visibleBuckets" :key="bucket.key" class="p-4">
           <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div class="min-w-0">
               <div class="flex items-center gap-2">
@@ -100,11 +119,11 @@
         </article>
       </div>
 
-      <div v-if="overview.suggested_questions.length" class="border-t border-border p-4">
+      <div v-if="visibleQuestions.length" class="border-t border-border p-4">
         <p class="text-xs text-text-tertiary">可以从这些问题开始</p>
         <div class="mt-3 flex flex-wrap gap-2">
           <button
-            v-for="question in overview.suggested_questions"
+            v-for="question in visibleQuestions"
             :key="question"
             type="button"
             class="rounded-md border border-border px-3 py-2 text-sm text-text-secondary transition hover:border-accent hover:text-accent"
@@ -122,15 +141,30 @@
 import { computed } from 'vue'
 import type { CorpusOverviewResponse } from '../../types'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   overview: CorpusOverviewResponse | null
   loading: boolean
   error: string
-}>()
+  variant?: 'compact' | 'detailed'
+  showHeader?: boolean
+}>(), {
+  variant: 'compact',
+  showHeader: true,
+})
 
 defineEmits<{ ask: [question: string] }>()
 
 const fallbackQuestions = ['如何上传第一篇论文？']
+
+const heading = computed(() =>
+  props.variant === 'detailed' ? '语料库详情' : '这套 RAG 覆盖什么？'
+)
+
+const subtitle = computed(() =>
+  props.variant === 'detailed'
+    ? '按主题查看当前入库论文的覆盖范围、代表论文和可提问方向。'
+    : '先看覆盖范围，再直接选择一个方向提问。'
+)
 
 const formattedChunks = computed(() => {
   const value = props.overview?.total_chunks || 0
@@ -141,6 +175,23 @@ const yearRange = computed(() => {
   if (!props.overview?.year_min || !props.overview?.year_max) return 'n/a'
   if (props.overview.year_min === props.overview.year_max) return String(props.overview.year_min)
   return `${props.overview.year_min}-${props.overview.year_max}`
+})
+
+const visibleBuckets = computed(() => {
+  const buckets = props.overview?.topic_buckets || []
+  return props.variant === 'detailed' ? buckets : buckets.slice(0, 3)
+})
+
+const visibleQuestions = computed(() => {
+  const questions = props.overview?.suggested_questions || []
+  return props.variant === 'detailed' ? questions : questions.slice(0, 3)
+})
+
+const compactTopicText = computed(() => {
+  if (!visibleBuckets.value.length) return '当前论文库'
+  return visibleBuckets.value
+    .map(bucket => `${bucket.label}（${bucket.paper_count} 篇）`)
+    .join('、')
 })
 
 const maxPaperCount = computed(() => {

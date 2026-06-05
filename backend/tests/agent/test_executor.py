@@ -113,6 +113,32 @@ def test_executor_does_not_insert_web_search_when_tavily_missing():
     assert "search_web" not in actions
 
 
+def test_executor_search_web_unavailable_does_not_add_context():
+    plan = [
+        StepSpec(
+            action="search_web",
+            params={"query": "latest transformer history", "max_results": 3},
+            reason="web supplement",
+        )
+    ]
+    state = _base_state(
+        messages=[HumanMessage(content="explain transformer history")],
+        plan=plan,
+        plan_step_index=0,
+        retrieval_context=[],
+    )
+
+    mock_tool = MagicMock()
+    mock_tool.invoke.return_value = "Web search unavailable: SSLError: unexpected eof"
+    with patch("app.agent.nodes.executor.search_web_tool", mock_tool):
+        result = executor_node(state, db=MagicMock())
+
+    assert result["retrieval_context"] == []
+    assert result["step_traces"][0]["output_summary"] == "web unavailable"
+    assert result["step_traces"][0]["detail"]["total"] == 0
+    assert result["step_traces"][0]["detail"]["error"]
+
+
 def test_executor_evaluate_docs_sufficient_does_not_add_supplementary_steps():
     plan = [
         StepSpec(action="evaluate_docs", params={}, reason="check"),

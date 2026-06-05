@@ -127,6 +127,8 @@ def _parse_arxiv_to_documents(raw_result: str) -> list[Document]:
 
 
 def _parse_web_to_documents(raw_result: str) -> list[Document]:
+    if _web_result_unavailable(raw_result):
+        return []
     docs = []
     for block in raw_result.split("---"):
         block = block.strip()
@@ -137,6 +139,15 @@ def _parse_web_to_documents(raw_result: str) -> list[Document]:
             metadata={"source": "web_search"},
         ))
     return docs
+
+
+def _web_result_unavailable(raw_result: str) -> bool:
+    text = (raw_result or "").strip().lower()
+    return text.startswith((
+        "web search unavailable",
+        "web search is not configured",
+        "no web results found",
+    ))
 
 
 def executor_node(state: AgentState, *, db: Session) -> dict:
@@ -216,12 +227,17 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
         result = search_web_tool.invoke(params)
         web_docs = _parse_web_to_documents(result)
         new_context, added_count = _append_unique_documents(new_context, web_docs)
-        output_summary = f"web: {len(web_docs)} results added"
+        if _web_result_unavailable(result):
+            output_summary = "web unavailable" if result.lower().startswith("web search unavailable") else "web: 0 results added"
+        else:
+            output_summary = f"web: {len(web_docs)} results added"
         output_detail = {
             "snippets": [(d.page_content or "")[:200] for d in web_docs[:3]],
             "total": len(web_docs),
             "added": added_count,
         }
+        if _web_result_unavailable(result):
+            output_detail["error"] = result
 
     elif action == "query_rewrite":
         intent = state.get("intent") or {}

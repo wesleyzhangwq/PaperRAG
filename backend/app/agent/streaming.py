@@ -40,13 +40,15 @@ def graph_event_to_sse_events(
     for node_name, node_state in chunk.items():
         if not isinstance(node_state, dict):
             continue
+        previous_plan = list(final_state.get("plan", []) or [])
         final_state.update(node_state)
+        current_plan = list(final_state.get("plan", []) or [])
+        step_idx: int | None = None
 
         if node_name == "executor":
-            plan = final_state.get("plan", [])
             step_idx = node_state.get("plan_step_index", 0) - 1
-            if 0 <= step_idx < len(plan):
-                step_spec = plan[step_idx]
+            if 0 <= step_idx < len(current_plan):
+                step_spec = current_plan[step_idx]
                 out.append({
                     "type": "step_start",
                     "data": {
@@ -55,11 +57,19 @@ def graph_event_to_sse_events(
                         "reason": step_spec.get("reason", ""),
                     },
                 })
+            if node_state.get("plan") and current_plan != previous_plan:
+                out.append({
+                    "type": "plan",
+                    "data": {"steps": current_plan, "total_steps": len(current_plan)},
+                })
 
         traces = node_state.get("step_traces", [])
         prev_traces_len = int(runtime.get("prev_traces_len", 0))
         for trace in traces[prev_traces_len:]:
-            out.append({"type": "step_done", "data": trace})
+            trace_data = dict(trace)
+            if step_idx is not None and "index" not in trace_data:
+                trace_data["index"] = step_idx
+            out.append({"type": "step_done", "data": trace_data})
             runtime["steps_count"] = int(runtime.get("steps_count", 0)) + 1
         runtime["prev_traces_len"] = len(final_state.get("step_traces", []))
 
@@ -80,6 +90,10 @@ def graph_event_to_sse_events(
             out.append({"type": "reflection", "data": node_state["reflection_result"]})
 
         if node_name == "re_planner" and node_state.get("plan"):
+            out.append({
+                "type": "plan",
+                "data": {"steps": current_plan, "total_steps": len(current_plan)},
+            })
             out.append({
                 "type": "re_plan",
                 "data": {"new_steps": node_state["plan"][-3:]},

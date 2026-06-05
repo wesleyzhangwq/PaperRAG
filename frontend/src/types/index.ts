@@ -1,4 +1,5 @@
 export interface StepTrace {
+  index?: number
   node: string
   action: string
   input_summary: string
@@ -117,6 +118,9 @@ export interface ThinkingStep {
   status: 'pending' | 'running' | 'done' | 'failed'
   outputSummary?: string
   durationMs?: number
+  detailParams?: Record<string, unknown>
+  detailResult?: Record<string, unknown>
+  detailSource?: 'presentation'
 }
 
 export interface Message {
@@ -220,6 +224,7 @@ export interface ServerMessage {
   sources: Source[]
   thinking: StepTrace[]
   presentation?: Presentation | null
+  elapsed_ms?: number | null
   created_at: string
 }
 

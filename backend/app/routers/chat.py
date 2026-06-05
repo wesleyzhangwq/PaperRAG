@@ -74,6 +74,7 @@ def _persist_messages(
     sources: list,
     thinking_traces: list,
     presentation: Optional[dict] = None,
+    elapsed_ms: Optional[float] = None,
 ) -> None:
     """Persist user message + assistant answer to chat_history.
     Uses a fresh session so it is independent from graph execution."""
@@ -93,6 +94,7 @@ def _persist_messages(
             thinking_payload = {
                 "traces": thinking_traces,
                 "presentation": presentation,
+                "elapsed_ms": elapsed_ms,
             }
             db.add(ChatHistory(
                 conversation_id=conversation_id,
@@ -224,9 +226,11 @@ async def chat_stream(req: ChatRequest):
             if presentation:
                 yield encode_sse("presentation", presentation)
 
+            total_ms = round((time.perf_counter() - t_start) * 1000, 2)
             _persist_messages(
                 cid, user_query, answer, sources_data, thinking_traces,
                 presentation=presentation,
+                elapsed_ms=total_ms,
             )
             yield encode_sse("done", {
                 "steps_count": runtime["steps_count"],

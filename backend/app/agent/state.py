@@ -14,6 +14,7 @@ class StepSpec(TypedDict):
 
 
 class StepTrace(TypedDict, total=False):
+    index: int
     node: str
     action: str
     input_summary: str

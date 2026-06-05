@@ -44,6 +44,7 @@ class MessageOut(BaseModel):
     sources: list[dict] = []
     thinking: list[dict] = []
     presentation: Optional[dict] = None
+    elapsed_ms: Optional[float] = None
     created_at: str
 
 
@@ -129,6 +130,7 @@ def list_messages(cid: str, db: Session = Depends(get_db)) -> list[MessageOut]:
         sources = []
         thinking: list[dict] = []
         presentation: Optional[dict] = None
+        elapsed_ms: Optional[float] = None
         if r.sources_json:
             try:
                 sources = json.loads(r.sources_json)
@@ -142,6 +144,7 @@ def list_messages(cid: str, db: Session = Depends(get_db)) -> list[MessageOut]:
                 if isinstance(payload, dict):
                     thinking = list(payload.get("traces") or [])
                     presentation = payload.get("presentation")
+                    elapsed_ms = payload.get("elapsed_ms")
                 elif isinstance(payload, list):
                     thinking = payload
             except Exception:
@@ -153,6 +156,7 @@ def list_messages(cid: str, db: Session = Depends(get_db)) -> list[MessageOut]:
             sources=sources,
             thinking=thinking,
             presentation=presentation,
+            elapsed_ms=elapsed_ms,
             created_at=r.created_at.isoformat() if r.created_at else "",
         ))
     return out

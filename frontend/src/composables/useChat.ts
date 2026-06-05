@@ -1,6 +1,7 @@
 import { useChatStore } from '../stores/chat'
 import { useConversationsStore } from '../stores/conversations'
 import { useSSE } from './useSSE'
+import { presentationStepsToThinking } from '../utils/thinking'
 import type { Message, ThinkingStep, ToolCallEvent, ToolResultEvent } from '../types'
 
 export function useChat() {
@@ -92,22 +93,25 @@ export function useChat() {
             break
 
           case 'plan': {
-            const steps: ThinkingStep[] = (event.data.steps || []).map((s, i) => ({
-              index: i,
-              action: s.action,
-              reason: s.reason,
-              status: 'pending',
-            }))
-            convs.updateLastAssistant({ thinking: steps })
+            syncThinkingWithPlan(event.data.steps || [])
             break
           }
 
           case 'step_start': {
             const cur = currentAssistant()
             if (!cur) break
-            const steps = [...(cur.thinking || [])]
-            const target = steps.find(s => s.index === event.data.index)
-            if (target) target.status = 'running'
+            const steps = ensureStepAtIndex(
+              [...(cur.thinking || [])],
+              event.data.index,
+              event.data.action,
+              event.data.reason,
+            )
+            const target = steps[event.data.index]
+            if (target) {
+              target.status = 'running'
+              target.action = event.data.action || target.action
+              target.reason = event.data.reason || target.reason
+            }
             convs.updateLastAssistant({ thinking: steps })
             break
           }
@@ -116,12 +120,11 @@ export function useChat() {
             const cur = currentAssistant()
             if (!cur) break
             const steps = [...(cur.thinking || [])]
-            const running = steps.find(s => s.status === 'running')
-              || steps.find(s => s.status === 'pending')
-            if (running) {
-              running.status = 'done'
-              running.outputSummary = event.data.output_summary
-              running.durationMs = event.data.duration_ms
+            const target = findStepForTrace(steps, event.data)
+            if (target) {
+              target.status = 'done'
+              target.outputSummary = event.data.output_summary
+              target.durationMs = event.data.duration_ms
             }
             convs.updateLastAssistant({ thinking: steps })
             break
@@ -130,8 +133,16 @@ export function useChat() {
           case 'tool_call': {
             const cur = currentAssistant()
             if (!cur) break
+            const steps = ensureStepAtIndex(
+              [...(cur.thinking || [])],
+              event.data.index,
+              event.data.action,
+              event.data.reason,
+            )
+            const step = steps[event.data.index]
+            if (step) step.status = 'running'
             const toolCalls = [...(cur.toolCalls || []), event.data as ToolCallEvent]
-            convs.updateLastAssistant({ toolCalls })
+            convs.updateLastAssistant({ thinking: steps, toolCalls })
             break
           }
 
@@ -175,6 +186,14 @@ export function useChat() {
             break
           }
 
+          case 'answer_start':
+            tokenBuffer = ''
+            stopTokenFlush()
+            if (event.data.reset !== false) {
+              convs.updateLastAssistant({ content: '' })
+            }
+            break
+
           case 'token': {
             tokenBuffer += event.data.t
             startTokenFlush()
@@ -188,7 +207,11 @@ export function useChat() {
 
           case 'presentation':
             flushTokenBuffer(true)
-            convs.updateLastAssistant({ presentation: event.data })
+            convs.updateLastAssistant({
+              presentation: event.data,
+              content: event.data.answer || currentAssistant()?.content || '',
+              thinking: presentationStepsToThinking(event.data),
+            })
             break
 
           case 'elapsed':
@@ -236,6 +259,77 @@ export function useChat() {
     if (!arr.length) return null
     const last = arr[arr.length - 1]
     return last.role === 'assistant' ? last : null
+  }
+
+  function syncThinkingWithPlan(planSteps: { action: string; reason: string }[]) {
+    const cur = currentAssistant()
+    if (!cur) return
+    const existing = cur.thinking || []
+    const used = new Set<number>()
+    const next: ThinkingStep[] = planSteps.map((step, index) => {
+      const key = stepKey(step.action, step.reason)
+      const matchedIndex = existing.findIndex((candidate, candidateIndex) =>
+        !used.has(candidateIndex) && stepKey(candidate.action, candidate.reason) === key
+      )
+      if (matchedIndex >= 0) {
+        used.add(matchedIndex)
+        return {
+          ...existing[matchedIndex],
+          index,
+          action: step.action,
+          reason: step.reason,
+        }
+      }
+      return {
+        index,
+        action: step.action,
+        reason: step.reason,
+        status: 'pending',
+      }
+    })
+    convs.updateLastAssistant({ thinking: next })
+  }
+
+  function stepKey(action: string, reason = ''): string {
+    return `${action}::${reason}`
+  }
+
+  function ensureStepAtIndex(
+    steps: ThinkingStep[],
+    index: number,
+    action: string,
+    reason = '',
+  ): ThinkingStep[] {
+    const next = [...steps]
+    while (next.length <= index) {
+      next.push({
+        index: next.length,
+        action: '',
+        reason: '',
+        status: 'pending',
+      })
+    }
+    const existing = next[index]
+    next[index] = {
+      ...existing,
+      index,
+      action: action || existing.action,
+      reason: reason || existing.reason,
+    }
+    return next.map((step, i) => ({ ...step, index: i }))
+  }
+
+  function findStepForTrace(steps: ThinkingStep[], trace: { index?: number; action: string }) {
+    if (typeof trace.index === 'number' && steps[trace.index]?.action === trace.action) {
+      return steps[trace.index]
+    }
+    if (typeof trace.index === 'number' && steps[trace.index] && !steps[trace.index].action) {
+      steps[trace.index].action = trace.action
+      return steps[trace.index]
+    }
+    return steps.find(s => s.status === 'running' && s.action === trace.action)
+      || steps.find(s => s.status === 'pending' && s.action === trace.action)
+      || null
   }
 
   return { sendMessage, abort }

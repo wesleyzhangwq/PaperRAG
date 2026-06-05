@@ -22,13 +22,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 
-const props = defineProps<{ disabled: boolean }>()
+const props = defineProps<{ disabled: boolean; draft?: string }>()
 const emit = defineEmits<{ send: [query: string] }>()
 
 const input = ref('')
 const inputRef = ref<HTMLTextAreaElement>()
+
+watch(
+  () => props.draft,
+  async (draft) => {
+    if (!draft) return
+    input.value = draft
+    await nextTick()
+    inputRef.value?.focus()
+  },
+)
 
 function send() {
   if (!input.value.trim() || props.disabled) return

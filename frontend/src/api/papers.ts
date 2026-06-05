@@ -1,5 +1,5 @@
 import api from './client'
-import type { PaperListResponse } from '../types'
+import type { CorpusOverviewResponse, PaperListResponse } from '../types'
 
 export async function listPapers(params: {
   q?: string
@@ -9,5 +9,10 @@ export async function listPapers(params: {
   limit?: number
 } = {}): Promise<PaperListResponse> {
   const { data } = await api.get<PaperListResponse>('/papers', { params })
+  return data
+}
+
+export async function getCorpusOverview(): Promise<CorpusOverviewResponse> {
+  const { data } = await api.get<CorpusOverviewResponse>('/papers/overview')
   return data
 }

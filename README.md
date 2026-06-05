@@ -1,98 +1,396 @@
 # PaperRAG
 
-Agentic RAG 学术论文问答系统：arXiv 论文 → MySQL + Qdrant → LLM 自适应规划 Agent（意图分析 → 多源检索 → 自我反思 → 带引用回答）→ Vue 3 实时思考过程可视化。
+<p align="center">
+  <strong>Agentic RAG for academic paper Q&A</strong>
+</p>
 
-## 技术栈
+<p align="center">
+  <a href="#quick-start">Quick Start</a> |
+  <a href="#architecture">Architecture</a> |
+  <a href="#english">English</a> |
+  <a href="LICENSE">MIT License</a>
+</p>
 
-- **Agent**：LangGraph StateGraph（8 节点 + 条件边）
-- **后端**：Python 3.11+ / FastAPI / SQLAlchemy / Pydantic
-- **LLM**：MiniMax M2.7（OpenAI 兼容 API）
-- **Embedding**：阿里 text-embedding-v4（DashScope）
-- **向量库**：Qdrant（向量 + BM25 混合检索）
-- **关系库**：MySQL 8.0
-- **前端**：Vue 3 + Vite + Tailwind CSS + Pinia
-- **流式**：SSE（Server-Sent Events），实时展示 Agent 思考过程
+<p align="center">
+  <img alt="Python" src="https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white">
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white">
+  <img alt="Vue" src="https://img.shields.io/badge/Vue-3-42b883?logo=vuedotjs&logoColor=white">
+  <img alt="LangGraph" src="https://img.shields.io/badge/LangGraph-Agentic_RAG-1f2937">
+  <img alt="License" src="https://img.shields.io/badge/License-MIT-blue">
+</p>
 
-## 快速开始
+PaperRAG 是一个面向学术论文问答的 **Agentic RAG** 系统。它把 arXiv 或用户上传的 PDF 解析入库，通过 Qdrant + MySQL 管理论文、片段和会话，再用 LangGraph Agent 进行意图分析、动态规划、多源检索、资料充分性评估、自我反思和带引用回答生成。
 
-### 1. 环境准备
+这个项目的目标不是做一个最短链路的聊天壳，而是展示一个可解释、可调试、可扩展的论文研究助手：用户能看到系统检索了什么、为什么补充检索、哪些论文被引用、回答可信度为什么高或低。
+
+---
+
+## Highlights
+
+- **Agentic workflow**: 8 个 LangGraph 节点，覆盖 `intent -> planner -> executor -> synthesis -> reflection -> re_planner -> final_answer -> presentation`。
+- **Adaptive retrieval plan**: Planner 根据问题复杂度生成不同检索计划，而不是固定跑一条 RAG pipeline。
+- **Hybrid retrieval**: Qdrant dense vector search 与 BM25 sparse ranking 融合，支持 oversampling、alpha 权重和检索缓存。
+- **Self-verification**: `evaluate_docs` 与 `reflection` 分别检查资料充分性和回答质量，失败后触发补充检索或重新生成。
+- **Transparent execution**: 前端通过 SSE 展示每一步耗时、参数、结果摘要、检索片段和调试详情。
+- **Corpus overview**: 新对话和论文库页面可以展示当前 RAG 语料库的主题分布、代表论文和建议问题。
+- **Cited answers**: 回答保留论文来源卡片和 citation popover，便于回到 arXiv / PDF 证据。
+- **Operational basics**: SQLite LangGraph checkpoint、会话历史、反馈接口、异步上传任务、API key 鉴权和限流中间件。
+- **Optional web search**: Tavily 作为可选补充检索，未配置或网络失败时会降级，不阻断本地 RAG。
+
+---
+
+## Product Surface
+
+| Area | What it does |
+| --- | --- |
+| Chat | 提问、流式回答、查看执行步骤、引用来源和调试详情 |
+| Papers | 浏览已入库论文、检索论文、查看语料库主题 overview |
+| Uploads | 上传本地 PDF，后台异步解析和入库 |
+| Settings | 查看后端连接、模型和基础配置状态 |
+| Feedback | 对回答标记有帮助 / 需改进，为后续评估闭环保留数据 |
+
+---
+
+## Architecture
+
+```text
+User query + chat history
+        |
+        v
+  intent analysis
+        |
+        v
+  retrieval planning
+        |
+        v
+  executor loop
+  - retrieve_local
+  - retrieve_arxiv
+  - search_web
+  - query_rewrite
+  - evaluate_docs
+  - get_paper_detail
+  - get_paper_chunks
+        |
+        v
+  synthesis with streaming
+        |
+        v
+  self reflection
+    | pass
+    v
+  final_answer -> presentation -> SSE/UI
+
+    fail + re_retrieve -> re_planner -> executor
+    fail + re_generate -> synthesis
+```
+
+### Backend
+
+```text
+backend/app/
+├── agent/          LangGraph state, graph, checkpoint, streaming, nodes
+├── tools/          Retrieval, web search, evaluation, paper lookup tools
+├── routers/        FastAPI routes for chat, papers, uploads, ingest, feedback
+├── services/       PDF ingestion and hybrid retrieval engine
+├── db/             MySQL and Qdrant clients
+├── models/         SQLAlchemy ORM models
+├── schemas/        Pydantic API contracts
+└── middleware/     Rate limit, API key auth, request context
+```
+
+### Frontend
+
+```text
+frontend/src/
+├── components/     Chat, answer cards, source cards, corpus overview
+├── composables/    SSE and chat orchestration
+├── stores/         Pinia state for chat, conversations, theme
+├── api/            Typed API clients
+├── views/          Chat, papers, uploads, settings
+└── utils/          Markdown, durations, thinking-step detail mapping
+```
+
+### Storage
+
+| Storage | Purpose |
+| --- | --- |
+| MySQL 8 | Paper metadata, chunks, conversations, chat history, upload jobs, feedback |
+| Qdrant | Dense vectors for paper chunks |
+| BM25 cache | Sparse retrieval over chunk text for hybrid ranking |
+| SQLite checkpoint | LangGraph thread checkpoint state |
+| Local `data/` | PDFs, metadata JSON, checkpoint files and transient artifacts |
+
+---
+
+## Quick Start
+
+### 1. Start infrastructure
 
 ```bash
 docker compose up -d mysql qdrant
 cp .env.example .env
-# 填写 LLM_API_KEY 和 EMBEDDING_API_KEY
 ```
 
-### 2. 后端
+Edit `.env` and fill at least:
+
+```bash
+LLM_API_KEY=...
+EMBEDDING_API_KEY=...
+```
+
+Current defaults use:
+
+```bash
+LLM_MODEL=MiniMax-M2.7
+LLM_API_BASE=https://api.minimax.chat/v1
+EMBEDDING_MODEL=BAAI/bge-m3
+EMBEDDING_API_BASE=https://api.siliconflow.cn/v1
+```
+
+Optional:
+
+```bash
+TAVILY_API_KEY=...        # web search supplement
+API_AUTH_ENABLED=true     # enable API key auth for deployment
+API_KEYS=your-key-1,...
+```
+
+### 2. Run backend
 
 ```bash
 cd backend
-python -m venv .venv && source .venv/bin/activate
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 
-# 下载论文 + 入库
-python scripts/download_arxiv.py --limit 50
-python scripts/ingest.py
-
-# 启动
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 3. 前端
+Health check:
+
+```bash
+curl http://localhost:8000/health
+```
+
+### 3. Build a paper corpus
+
+Small recent arXiv corpus:
+
+```bash
+cd backend
+python scripts/download_arxiv.py --limit 50
+python scripts/ingest.py
+```
+
+Focused AI landmark corpus:
+
+```bash
+cd backend
+python scripts/curate_ai_landmark_corpus.py --target 500 --workers 6
+python scripts/ingest.py --force
+```
+
+The curation script writes `data/metadata_filtered.json` and downloads available PDFs into `data/pdfs/`. Papers without accessible PDFs are recorded in `data/raw_metadata/ai_landmark_skipped.json` and are not ingested until a PDF is supplied.
+
+### 4. Run frontend
 
 ```bash
 cd frontend
 npm install
 npm run dev
-# http://localhost:5173
 ```
 
-### 4. Docker 一键部署
+Open:
+
+```text
+http://localhost:5173
+```
+
+### 5. Docker full stack
 
 ```bash
+cp .env.example .env
+# fill API keys first
 docker compose up -d
-# http://localhost:8080
 ```
 
-## 架构
+Frontend:
 
-```
-User Query + Chat History
-        │
-        ▼
-   ┌─────────┐
-   │  intent   │  分析意图：type / entities / complexity
-   └────┬──────┘
-        ▼
-   ┌─────────┐
-   │ planner   │  生成执行计划 (retrieve / rewrite / evaluate / search...)
-   └────┬──────┘
-        ▼
-   ┌─────────┐ ◄── re_planner (反思失败时补充检索)
-   │ executor  │  调度 7 个工具
-   └────┬──────┘
-        ▼
-   ┌───────────┐
-   │ synthesis   │  从多源上下文生成带引用答案 (streaming)
-   └────┬───────┘
-        ▼
-   ┌────────────┐
-   │ reflection   │  三维验证：引用忠实 / 完整性 / 逻辑一致
-   └────┬────────┘
-        │ pass → final_answer → presentation → END
-        │ fail → re_planner 或 re_generate
+```text
+http://localhost:8080
 ```
 
-前端通过 SSE 实时展示每个步骤的执行状态（ThinkingCard），引用以 Popover 形式展示论文详情。
+Backend:
 
-## 文档
+```text
+http://localhost:8000
+```
 
-| 文档 | 内容 |
-|------|------|
-| [`AGENTS.md`](AGENTS.md) | 架构设计、目录结构、SSE 协议、Reflexion 模式、贡献规范 |
-| [`eval/README.md`](eval/README.md) | 评估框架：70 题语义数据集、消融实验、指标说明 |
-| [`eval/EVALUATION_REPORT.md`](eval/EVALUATION_REPORT.md) | 检索调优报告：Baseline vs Optimized 对比、参数消融数据 |
+---
 
-## 许可证
+## Configuration
 
-MIT
+Important `.env` groups:
+
+| Group | Keys |
+| --- | --- |
+| LLM | `LLM_MODEL`, `LLM_API_BASE`, `LLM_API_KEY`, optional `PLANNER_MODEL`, `REFLECTION_MODEL` |
+| Embedding | `EMBEDDING_MODEL`, `EMBEDDING_API_BASE`, `EMBEDDING_API_KEY` |
+| Retrieval | `RETRIEVAL_K`, `FINAL_CONTEXT_K`, `HYBRID_ALPHA`, `HYBRID_OVERSAMPLE`, cache settings |
+| Agent | `AGENT_MAX_PLAN_STEPS`, `AGENT_MAX_REFLECTIONS`, `AGENT_CHECKPOINT_ENABLED`, `AGENT_CHECKPOINT_PATH` |
+| Search | `TAVILY_API_KEY`, `ARXIV_MAX_RESULTS` |
+| Safety | `RATE_LIMIT_ENABLED`, `API_AUTH_ENABLED`, `API_KEYS`, auth exempt paths |
+| Data | `DATA_DIR`, `PDF_DIR`, `METADATA_JSON` |
+
+See [.env.example](.env.example) for the full list.
+
+---
+
+## API Overview
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /health` | backend health check |
+| `POST /chat` | synchronous chat response |
+| `POST /chat/stream` | SSE streaming chat response |
+| `GET /conversations` | list conversations |
+| `GET /conversations/{id}/messages` | load persisted messages |
+| `GET /papers` | list/search ingested papers |
+| `GET /papers/overview` | corpus topic overview |
+| `POST /upload` | queue PDF upload and background ingest |
+| `GET /upload/jobs` | list upload jobs |
+| `POST /feedback` | store answer feedback |
+| `POST /ingest` | admin ingestion endpoint |
+
+FastAPI docs are available at:
+
+```text
+http://localhost:8000/docs
+```
+
+---
+
+## Validation
+
+Backend:
+
+```bash
+backend/.venv/bin/python -m pytest -q
+```
+
+Frontend:
+
+```bash
+cd frontend
+node --test --experimental-strip-types tests/thinking.test.mjs
+npm run build
+```
+
+The test suite mocks LLM and database boundaries. It should not call real LLM, embedding, Tavily, arXiv or Qdrant services.
+
+---
+
+## Documentation
+
+| File | Description |
+| --- | --- |
+| [AGENTS.md](AGENTS.md) | Architecture, design philosophy, agent flow and contributor conventions |
+| [CLAUDE.md](CLAUDE.md) | Short agent context for future coding sessions |
+| [eval/README.md](eval/README.md) | Evaluation framework and retrieval tuning notes |
+| [docs/paperrag-java-architecture-overview.md](docs/paperrag-java-architecture-overview.md) | High-level architecture review and roadmap status |
+| [docs/paperrag-defect-verification.md](docs/paperrag-defect-verification.md) | Defect verification notes |
+| [docs/paperrag-update-plan.md](docs/paperrag-update-plan.md) | Iteration plan |
+| [docs/paperrag-execution-acceptance.md](docs/paperrag-execution-acceptance.md) | Acceptance notes |
+
+---
+
+## Roadmap
+
+- Stronger feedback consumption: connect answer feedback to evaluation/admin review.
+- Richer corpus management: deduplication, import/export, and source-level quality controls.
+- Production hardening: multi-instance rate limiting, stricter auth defaults, migrations and deployment profiles.
+- Evaluation dashboards: trend reports for retrieval quality, citation faithfulness and answer confidence.
+
+---
+
+## Notes
+
+- This repository does not commit PDFs, vector data, database files or API keys.
+- You need your own LLM and embedding API keys before the full RAG path can run.
+- Tavily web search is optional. Local retrieval remains the primary path.
+- API authentication is configurable and disabled by default for local development. Enable it before public deployment.
+
+---
+
+## English
+
+PaperRAG is an **Agentic RAG system for academic paper Q&A**. It ingests arXiv or uploaded PDFs, stores paper metadata and chunks in MySQL, indexes chunk embeddings in Qdrant, and uses a LangGraph agent to plan retrieval, evaluate evidence, synthesize cited answers, and self-reflect before returning the final response.
+
+### Why this project exists
+
+PaperRAG is designed as a portfolio-grade, explainable research assistant. Instead of hiding retrieval behind a black box, it exposes execution steps, retrieved chunks, source cards, citation details, confidence reasons and debug traces in the UI.
+
+### Key capabilities
+
+- LangGraph-based agent workflow with intent analysis, planning, execution, synthesis, reflection and presentation.
+- Hybrid dense + BM25 retrieval with tunable ranking parameters.
+- Optional Tavily web search for evidence supplementation.
+- SSE streaming for live answer tokens and execution-step updates.
+- Persistent conversations, chat history and LangGraph checkpoints.
+- PDF upload queue with background ingestion.
+- Corpus overview for topic buckets, representative papers and suggested questions.
+- Vue 3 frontend with source cards, citation popovers and debug panels.
+
+### Tech stack
+
+| Layer | Technology |
+| --- | --- |
+| Agent | LangGraph |
+| Backend | FastAPI, SQLAlchemy, Pydantic |
+| Frontend | Vue 3, Vite, Tailwind CSS, Pinia |
+| LLM | MiniMax M2.7 through an OpenAI-compatible API |
+| Embedding | SiliconFlow BAAI/bge-m3 by default |
+| Vector DB | Qdrant |
+| SQL DB | MySQL 8 |
+| Streaming | Server-Sent Events |
+
+### Quick start
+
+```bash
+docker compose up -d mysql qdrant
+cp .env.example .env
+# fill LLM_API_KEY and EMBEDDING_API_KEY
+```
+
+Backend:
+
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Ingest sample papers:
+
+```bash
+cd backend
+python scripts/download_arxiv.py --limit 50
+python scripts/ingest.py
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173`.
+
+### License
+
+PaperRAG is released under the [MIT License](LICENSE).

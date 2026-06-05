@@ -42,6 +42,7 @@ target/
 # Data / artifacts (too big for git)
 data/raw_metadata/*
 data/pdfs/*
+data/weekly_paper_radar/*
 data/processed_txt/*
 data/failed.txt
 data/metadata_filtered.json

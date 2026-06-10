@@ -1,45 +1,31 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import * as convApi from '../api/conversations'
-import { presentationStepsToThinking } from '../utils/thinking'
+import { presentationToTimeline, tracesToTimeline } from '../utils/timeline'
 import type { Conversation, Message, ServerMessage } from '../types'
 
 const ACTIVE_KEY = 'paperrag.activeConversation'
 
 function serverMessagesToLocal(rows: ServerMessage[]): Message[] {
   return rows.map(r => {
-    const thinking = r.presentation?.steps?.length
-      ? presentationStepsToThinking(r.presentation)
-      : (r.thinking || []).map((t, i) => ({
-          index: i,
-          action: t.action,
-          reason: '',
-          status: 'done' as const,
-          outputSummary: t.output_summary,
-          durationMs: t.duration_ms,
-        }))
+    const timeline = r.presentation?.steps?.length
+      ? presentationToTimeline(r.presentation)
+      : tracesToTimeline(r.thinking || [])
     return {
       id: `srv-${r.id}`,
       role: r.role,
       content: r.content,
       sources: r.sources || [],
-      thinking,
+      timeline,
       presentation: r.presentation || null,
-      elapsedMs: r.elapsed_ms ?? deriveElapsedMs(thinking, r.presentation),
+      elapsedMs: r.elapsed_ms ?? deriveElapsedMs(timeline),
       timestamp: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
     }
   })
 }
 
-function deriveElapsedMs(
-  thinking: Message['thinking'],
-  presentation: ServerMessage['presentation'],
-): number {
-  const traceMs = (thinking || []).reduce((sum, step) => sum + (step.durationMs || 0), 0)
-  const presentationMs = (presentation?.steps || []).reduce((sum, step) => {
-    return sum + (step.duration_ms || 0)
-  }, 0)
-  return Math.round(Math.max(traceMs, presentationMs))
+function deriveElapsedMs(timeline: Message['timeline']): number {
+  return Math.round((timeline || []).reduce((sum, item) => sum + (item.durationMs || 0), 0))
 }
 
 export const useConversationsStore = defineStore('conversations', () => {

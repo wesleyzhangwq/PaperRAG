@@ -20,37 +20,31 @@ export interface Source {
   snippet?: string
 }
 
-export interface SSEIntent {
-  type: 'simple' | 'complex' | 'comparison'
-  entities: string[]
-  complexity: 'low' | 'medium' | 'high'
+// ---------------------------------------------------------------------------
+// v2 SSE protocol — stage events with stable ids
+// ---------------------------------------------------------------------------
+export interface SSEStage {
+  /** Stable id: pipeline stage key ("intent", "evidence", …) or "step:N". */
+  id: string
+  /** Pipeline stage kind; executor tool steps use "retrieve_step". */
+  stage: string
+  status: 'start' | 'done' | 'warning' | 'failed' | 'skipped'
+  title: string
+  summary?: string
+  detail?: Record<string, unknown>
+  duration_ms?: number
 }
 
-export interface SSEPlan {
-  steps: { action: string; reason: string; params?: Record<string, unknown> }[]
-  total_steps: number
-}
-
-export interface SSEReflection {
-  passed: boolean
-  citation_ok: boolean
-  completeness_ok: boolean
-  logic_ok: boolean
-}
-
-export interface ToolCallEvent {
-  index: number
+export interface SSEPlanStep {
+  id: string
   action: string
-  params: Record<string, unknown>
+  title: string
   reason: string
 }
 
-export interface ToolResultEvent {
-  index: number
-  action: string
-  duration_ms: number
-  summary: string
-  detail: Record<string, unknown>
+export interface SSEPlan {
+  revision: number
+  steps: SSEPlanStep[]
 }
 
 // ---------------------------------------------------------------------------
@@ -109,18 +103,21 @@ export interface Presentation {
 }
 
 // ---------------------------------------------------------------------------
-// Live thinking step (in-flight before presentation arrives)
+// Agent activity timeline (live during streaming + rebuilt on history load)
 // ---------------------------------------------------------------------------
-export interface ThinkingStep {
-  index: number
-  action: string
-  reason: string
-  status: 'pending' | 'running' | 'done' | 'failed'
-  outputSummary?: string
+export type TimelineStatus = 'pending' | 'running' | 'done' | 'warning' | 'failed' | 'skipped'
+
+export interface TimelineItem {
+  /** Stable id — stage key or "step:N". Events upsert by id. */
+  id: string
+  /** 'stage' = pipeline node; 'step' = executor tool step (nested visual). */
+  kind: 'stage' | 'step'
+  title: string
+  status: TimelineStatus
+  summary?: string
+  reason?: string
+  detail?: Record<string, unknown>
   durationMs?: number
-  detailParams?: Record<string, unknown>
-  detailResult?: Record<string, unknown>
-  detailSource?: 'presentation'
 }
 
 export interface Message {
@@ -129,13 +126,13 @@ export interface Message {
   content: string
   reasoning?: string
   sources?: Source[]
-  thinking?: ThinkingStep[]
-  toolCalls?: ToolCallEvent[]
-  toolResults?: ToolResultEvent[]
+  timeline?: TimelineItem[]
   presentation?: Presentation | null
   elapsedMs?: number
   timestamp: number
   pending?: boolean
+  /** True once answer tokens have started streaming for this turn. */
+  answering?: boolean
 }
 
 export interface Conversation {

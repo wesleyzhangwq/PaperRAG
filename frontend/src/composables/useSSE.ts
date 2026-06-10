@@ -1,21 +1,11 @@
 import { ref } from 'vue'
-import type {
-  SSEIntent, SSEPlan, SSEReflection, StepTrace, Source,
-  ToolCallEvent, ToolResultEvent, Presentation,
-} from '../types'
+import type { SSEPlan, SSEStage, Source, Presentation } from '../types'
 
 export type SSEEvent =
   | { type: 'conversation'; data: { conversation_id: string } }
-  | { type: 'intent'; data: SSEIntent }
+  | { type: 'stage'; data: SSEStage }
   | { type: 'plan'; data: SSEPlan }
-  | { type: 'step_start'; data: { index: number; action: string; reason: string } }
-  | { type: 'step_done'; data: StepTrace }
-  | { type: 'tool_call'; data: ToolCallEvent }
-  | { type: 'tool_result'; data: ToolResultEvent }
-  | { type: 'reflection'; data: SSEReflection }
-  | { type: 're_plan'; data: { new_steps: unknown[] } }
   | { type: 'answer_start'; data: { attempt: number; reset?: boolean } }
-  | { type: 'reasoning_token'; data: { t: string } }
   | { type: 'token'; data: { t: string } }
   | { type: 'sources'; data: { sources: Source[] } }
   | { type: 'presentation'; data: Presentation }
@@ -23,6 +13,14 @@ export type SSEEvent =
   | { type: 'done'; data: { steps_count: number; reflections: number } }
   | { type: 'error'; data: { message: string } }
 
+/**
+ * Spec-compliant SSE client over fetch streaming.
+ *
+ * Parser rules (https://html.spec.whatwg.org/multipage/server-sent-events.html):
+ * - events are separated by blank lines; fields accumulate until then
+ * - multiple `data:` lines join with "\n"
+ * - tolerate CRLF line endings and `: comment` keep-alives
+ */
 export function useSSE() {
   const isConnected = ref(false)
   let abortController: AbortController | null = null
@@ -35,16 +33,23 @@ export function useSSE() {
     isConnected.value = true
 
     const baseUrl = import.meta.env.VITE_API_BASE || 'http://localhost:8000'
-    const response = await fetch(`${baseUrl}/chat/stream`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query,
-        conversation_id: conversationId,
-        session_id: conversationId,
-      }),
-      signal: abortController.signal,
-    })
+    let response: Response
+    try {
+      response = await fetch(`${baseUrl}/chat/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query,
+          conversation_id: conversationId,
+          session_id: conversationId,
+        }),
+        signal: abortController.signal,
+      })
+    } catch (e) {
+      isConnected.value = false
+      yield { type: 'error', data: { message: e instanceof Error ? e.message : '网络连接失败' } }
+      return
+    }
 
     if (!response.ok || !response.body) {
       isConnected.value = false
@@ -55,6 +60,22 @@ export function useSSE() {
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
+    let eventType = ''
+    let dataLines: string[] = []
+
+    function* dispatch(): Generator<SSEEvent> {
+      if (!eventType && dataLines.length === 0) return
+      const raw = dataLines.join('\n')
+      const type = eventType || 'message'
+      eventType = ''
+      dataLines = []
+      if (!raw) return
+      try {
+        yield { type, data: JSON.parse(raw) } as SSEEvent
+      } catch {
+        /* malformed frame — skip */
+      }
+    }
 
     try {
       while (true) {
@@ -62,25 +83,23 @@ export function useSSE() {
         if (done) break
 
         buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
+        // Tolerate \n and \r\n line endings.
+        const lines = buffer.split(/\r?\n/)
         buffer = lines.pop() || ''
 
-        let eventType = ''
         for (const line of lines) {
-          if (line.startsWith('event: ')) {
-            eventType = line.slice(7).trim()
-          } else if (line.startsWith('data: ') && eventType) {
-            try {
-              const data = JSON.parse(line.slice(6))
-              yield { type: eventType, data } as SSEEvent
-            } catch { /* skip malformed */ }
-            eventType = ''
-          } else if (line === '') {
-            // event boundary
-            eventType = ''
+          if (line === '') {
+            yield* dispatch()
+          } else if (line.startsWith(':')) {
+            continue // comment / keep-alive
+          } else if (line.startsWith('event:')) {
+            eventType = line.slice(6).trim()
+          } else if (line.startsWith('data:')) {
+            dataLines.push(line.slice(5).trimStart())
           }
         }
       }
+      yield* dispatch() // flush trailing frame without final blank line
     } finally {
       isConnected.value = false
     }

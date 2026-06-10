@@ -15,7 +15,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from sqlalchemy.orm import Session
 
 from app.agent.checkpoint import agent_run_config, open_async_checkpointer
-from app.agent.graph import build_agent_graph, run_agent_sync
+from app.agent.graph import build_agent_graph, initial_agent_state, run_agent_sync
 from app.agent.state import AgentState
 from app.agent.streaming import encode_sse, graph_event_to_sse_events
 from app.core.config import get_settings
@@ -155,18 +155,9 @@ async def chat_stream(req: ChatRequest):
         yield encode_sse("conversation", {"conversation_id": cid})
         last_heartbeat = time.perf_counter()
         HEARTBEAT_INTERVAL = 0.5  # seconds
-        final_state: AgentState = {
-            "messages": list(history) + [HumanMessage(content=user_query)],
-            "intent": None,
-            "plan": [],
-            "plan_step_index": 0,
-            "retrieval_context": [],
-            "step_traces": [],
-            "reflection_count": 0,
-            "final_answer": None,
-            "reflection_result": None,
-            "sources": None,
-        }
+        final_state: AgentState = initial_agent_state(
+            list(history) + [HumanMessage(content=user_query)]
+        )
         runtime = {
             "prev_traces_len": 0,
             "steps_count": 0,

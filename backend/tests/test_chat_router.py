@@ -46,9 +46,9 @@ def test_chat_stream_uses_astream_events_and_thread_id():
             assert version == "v2"
             yield {"event": "on_custom_event", "name": "token", "data": {"t": "hello"}}
             yield {
-                "event": "on_chain_stream",
-                "name": "LangGraph",
-                "data": {"chunk": {"intent": {"intent": {"type": "simple", "entities": [], "complexity": "low"}}}},
+                "event": "on_custom_event",
+                "name": "stage",
+                "data": {"id": "intent", "stage": "intent", "status": "done", "title": "理解问题"},
             }
             yield {
                 "event": "on_chain_stream",
@@ -74,7 +74,7 @@ def test_chat_stream_uses_astream_events_and_thread_id():
     assert resp.status_code == 200
     assert "event: conversation" in resp.text
     assert "event: token" in resp.text
-    assert "event: intent" in resp.text
+    assert "event: stage" in resp.text
     assert "event: done" in resp.text
     assert seen_config["configurable"]["thread_id"] == "conv-stream"
 

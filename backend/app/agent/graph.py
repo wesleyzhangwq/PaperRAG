@@ -1,4 +1,27 @@
-"""LangGraph agent graph: build, compile, and run."""
+"""LangGraph agent graph: build, compile, and run.
+
+v2 orchestration — node-per-stage, mirroring the enterprise agentic RAG
+pipeline (安全校验 → 意图 → 规划 → 检索路由 → 多源检索 → 证据处理 →
+充分性判断 → 生成 → groundedness → 引用过滤 → 输出):
+
+    guard ──blocked──────────────────────────────────────────┐
+      │ok                                                    │
+    intent → planner → route → executor ⟲                    │
+                                  │ (plan exhausted)         │
+                               evidence                      │
+                                  │                          │
+                             sufficiency ──insufficient──→ re_planner
+                                  │ sufficient/degraded        │
+                              synthesis ←──re_generate──┐     │
+                                  │                     │     │
+                             groundedness ──re_retrieve─┼──→ re_planner
+                                  │ pass/budget         │     (loops back to executor)
+                             citation_gate              │
+                                  │                     │
+                             presentation ←─────────────┘
+                                  │
+                                 END
+"""
 from __future__ import annotations
 
 from langchain_core.messages import AIMessage, HumanMessage
@@ -6,12 +29,16 @@ from langgraph.graph import END, StateGraph
 from sqlalchemy.orm import Session
 
 from app.agent.checkpoint import agent_run_config, open_sync_checkpointer
+from app.agent.nodes.citation_gate import citation_gate_node
+from app.agent.nodes.evidence import evidence_node
 from app.agent.nodes.executor import executor_node
-from app.agent.nodes.final_answer import final_answer_node
+from app.agent.nodes.groundedness import groundedness_node
+from app.agent.nodes.guard import guard_node
 from app.agent.nodes.intent import intent_node
 from app.agent.nodes.planner import planner_node, re_planner_node
 from app.agent.nodes.presentation import presentation_node
-from app.agent.nodes.reflection import reflection_node
+from app.agent.nodes.route import route_node
+from app.agent.nodes.sufficiency import after_sufficiency, sufficiency_node
 from app.agent.nodes.synthesis import synthesis_node
 from app.agent.state import AgentState
 from app.core.config import get_settings
@@ -25,8 +52,15 @@ def _extract_query(state: AgentState) -> str:
     return ""
 
 
+def route_after_guard(state: AgentState | dict) -> str:
+    """Blocked queries short-circuit straight to presentation (refusal text
+    was already placed into final_answer by the guard node)."""
+    guard = state.get("guard_result") or {}
+    return "intent" if guard.get("allowed", True) else "presentation"
+
+
 def route_after_reflection(state: AgentState | dict, max_reflections: int) -> str:
-    """Route after reflection.
+    """Route after the groundedness check.
 
     `re_retrieve` intentionally goes through `re_planner`: at this point the
     executor index is already past retrieval steps, so the graph needs a fresh
@@ -34,9 +68,9 @@ def route_after_reflection(state: AgentState | dict, max_reflections: int) -> st
     """
     reflection = state.get("reflection_result", {}) or {}
     if reflection.get("passed", True):
-        return "final_answer"
+        return "citation_gate"
     if state.get("reflection_count", 0) >= max_reflections:
-        return "final_answer"
+        return "citation_gate"
     strategy = reflection.get("fix_strategy")
     if strategy == "re_generate":
         return "synthesis"
@@ -44,87 +78,138 @@ def route_after_reflection(state: AgentState | dict, max_reflections: int) -> st
 
 
 def build_agent_graph(db: Session, *, checkpointer=None) -> object:
-    """Build and compile the agentic RAG graph."""
+    """Build and compile the agentic RAG graph (v2 orchestration)."""
     settings = get_settings()
 
+    def _guard(state: AgentState) -> dict:
+        return guard_node(state, query=_extract_query(state))
+
     def _intent(state: AgentState) -> dict:
-        query = _extract_query(state)
-        return intent_node(state, query=query)
+        return intent_node(state, query=_extract_query(state))
 
     def _planner(state: AgentState) -> dict:
-        query = _extract_query(state)
-        return planner_node(state, query=query)
+        return planner_node(state, query=_extract_query(state))
+
+    def _route(state: AgentState) -> dict:
+        return route_node(state, query=_extract_query(state))
 
     def _executor(state: AgentState) -> dict:
         return executor_node(state, db=db)
 
+    def _evidence(state: AgentState) -> dict:
+        return evidence_node(state)
+
+    def _sufficiency(state: AgentState) -> dict:
+        return sufficiency_node(state, query=_extract_query(state))
+
     def _synthesis(state: AgentState) -> dict:
         query = _extract_query(state)
-        # If re-generating after reflection failure, pass issues as constraints
+        # If re-generating after a groundedness failure, pass issues as constraints
         reflection = state.get("reflection_result") or {}
         issues = reflection.get("issues") if not reflection.get("passed", True) else None
         return synthesis_node(state, query=query, issues=issues or None)
 
-    def _reflection(state: AgentState) -> dict:
-        query = _extract_query(state)
-        return reflection_node(state, query=query)
+    def _groundedness(state: AgentState) -> dict:
+        return groundedness_node(state, query=_extract_query(state))
 
     def _re_planner(state: AgentState) -> dict:
         query = _extract_query(state)
-        reflection = state.get("reflection_result", {})
+        # Entered from sufficiency (missing aspects) or groundedness (issues).
+        reflection = state.get("reflection_result") or {}
+        sufficiency = state.get("sufficiency_result") or {}
+        issues = list(reflection.get("issues") or []) or [str(sufficiency.get("reason") or "")]
+        missing = list(sufficiency.get("missing_aspects") or [])
         return re_planner_node(
             state,
             query=query,
-            issues=reflection.get("issues", []),
-            missing_aspects=reflection.get("missing_aspects", []),
+            issues=[i for i in issues if i],
+            missing_aspects=missing,
         )
 
-    def _final_answer(state: AgentState) -> dict:
-        return final_answer_node(state, db=db)
+    def _citation_gate(state: AgentState) -> dict:
+        return citation_gate_node(state, db=db)
 
     def _presentation(state: AgentState) -> dict:
         return presentation_node(state, db=db)
 
     def _should_continue_executing(state: AgentState) -> str:
-        idx = state["plan_step_index"]
-        plan = state["plan"]
-        if idx < len(plan) and plan[idx]["action"] != "reasoning_synthesis":
-            return "executor"
-        return "synthesis"
+        return "executor" if state["plan_step_index"] < len(state["plan"]) else "evidence"
+
+    def _after_sufficiency(state: AgentState) -> str:
+        return after_sufficiency(state)
 
     def _after_reflection(state: AgentState) -> str:
         return route_after_reflection(state, settings.agent_max_reflections)
 
     graph = StateGraph(AgentState)
 
+    graph.add_node("guard", _guard)
     graph.add_node("intent", _intent)
     graph.add_node("planner", _planner)
+    graph.add_node("route", _route)
     graph.add_node("executor", _executor)
+    graph.add_node("evidence", _evidence)
+    graph.add_node("sufficiency", _sufficiency)
     graph.add_node("synthesis", _synthesis)
-    graph.add_node("reflection", _reflection)
+    graph.add_node("groundedness", _groundedness)
     graph.add_node("re_planner", _re_planner)
-    graph.add_node("final_answer", _final_answer)
+    graph.add_node("citation_gate", _citation_gate)
     graph.add_node("presentation", _presentation)
 
-    graph.set_entry_point("intent")
+    graph.set_entry_point("guard")
+    graph.add_conditional_edges(
+        "guard",
+        route_after_guard,
+        {"intent": "intent", "presentation": "presentation"},
+    )
     graph.add_edge("intent", "planner")
-    graph.add_edge("planner", "executor")
-    graph.add_conditional_edges("executor", _should_continue_executing)
-    graph.add_edge("synthesis", "reflection")
+    graph.add_edge("planner", "route")
+    graph.add_edge("route", "executor")
     graph.add_conditional_edges(
-        "reflection",
-        _after_reflection,
-        {"final_answer": "final_answer", "re_planner": "re_planner", "synthesis": "synthesis"},
-    )
-    graph.add_conditional_edges(
-        "re_planner",
+        "executor",
         _should_continue_executing,
-        {"executor": "executor", "synthesis": "synthesis"},
+        {"executor": "executor", "evidence": "evidence"},
     )
-    graph.add_edge("final_answer", "presentation")
+    graph.add_edge("evidence", "sufficiency")
+    graph.add_conditional_edges(
+        "sufficiency",
+        _after_sufficiency,
+        {"synthesis": "synthesis", "re_planner": "re_planner"},
+    )
+    graph.add_edge("re_planner", "executor")
+    graph.add_edge("synthesis", "groundedness")
+    graph.add_conditional_edges(
+        "groundedness",
+        _after_reflection,
+        {"citation_gate": "citation_gate", "re_planner": "re_planner", "synthesis": "synthesis"},
+    )
+    graph.add_edge("citation_gate", "presentation")
     graph.add_edge("presentation", END)
 
     return graph.compile(checkpointer=checkpointer)
+
+
+def initial_agent_state(messages: list) -> AgentState:
+    """Canonical initial state shared by sync and streaming entrypoints."""
+    return {
+        "messages": messages,
+        "intent": None,
+        "plan": [],
+        "plan_step_index": 0,
+        "retrieval_context": [],
+        "step_traces": [],
+        "reflection_count": 0,
+        "sufficiency_round": 0,
+        "final_answer": None,
+        "reflection_result": None,
+        "sources": None,
+        "guard_result": None,
+        "route_decision": None,
+        "evidence_stats": None,
+        "sufficiency_result": None,
+        "degraded": False,
+        "removed_citations": [],
+    }
 
 
 def run_agent_sync(
@@ -152,18 +237,7 @@ def run_agent_sync(
                 messages.append(item)
     messages.append(HumanMessage(content=query))
 
-    initial_state: AgentState = {
-        "messages": messages,
-        "intent": None,
-        "plan": [],
-        "plan_step_index": 0,
-        "retrieval_context": [],
-        "step_traces": [],
-        "reflection_count": 0,
-        "final_answer": None,
-        "reflection_result": None,
-        "sources": None,
-    }
+    initial_state = initial_agent_state(messages)
 
     config = agent_run_config(thread_id)
     with open_sync_checkpointer() as checkpointer:

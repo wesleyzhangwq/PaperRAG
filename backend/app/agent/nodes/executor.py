@@ -7,13 +7,12 @@ from hashlib import sha1
 from langchain_core.documents import Document
 from sqlalchemy.orm import Session
 
+from app.agent.stages import ACTION_LABELS
 from app.agent.state import AgentState, StepTrace
 from app.agent.streaming import emit
-from app.core.config import get_settings
 from app.schemas.chat import ChatFilter
 from app.services.retriever import retrieve
 from app.tools.query_rewrite import rewrite_query
-from app.tools.evaluate_docs import evaluate_docs
 from app.tools.retrieve_arxiv import retrieve_arxiv_tool
 from app.tools.search_web import search_web_tool
 from app.tools.paper_detail import get_paper_detail
@@ -95,11 +94,6 @@ def _run_query_rewrite(params: dict, intent: dict, fallback_query: str) -> list[
     return rewrite_query(original, intent)
 
 
-def _run_evaluate_docs(params: dict, query: str, context: list[Document]) -> dict:
-    texts = [d.page_content for d in context]
-    return evaluate_docs(query, texts)
-
-
 def _parse_arxiv_to_documents(raw_result: str) -> list[Document]:
     """Parse arXiv tool output into Document objects for context."""
     docs = []
@@ -158,18 +152,19 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
     params = dict(step.get("params") or {})
     fallback_query = _user_query_from_state(state)
 
-    emit("tool_call", {
-        "index": idx,
-        "action": action,
-        "params": params,
-        "reason": step.get("reason", ""),
+    # Stable-id step event: the frontend upserts by id — no index guessing.
+    emit("stage", {
+        "id": f"step:{idx}",
+        "stage": "retrieve_step",
+        "status": "start",
+        "title": ACTION_LABELS.get(action, action),
+        "detail": {"action": action, "params": params, "reason": step.get("reason", "")},
     })
 
     t0 = time.perf_counter()
     new_context = list(state.get("retrieval_context", []))
     output_summary = ""
     output_detail: dict = {}
-    extra_plan_steps: list[dict] = []
     state_patch: dict = {}
     trace_params = dict(params)
     trace_reason = step.get("reason", "")
@@ -251,44 +246,6 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
                 if queries:
                     plan_step["params"] = {**plan_step["params"], "query": queries.pop(0)}
 
-    elif action == "evaluate_docs":
-        query = (params.get("query") or "").strip() or fallback_query
-        trace_params = {**trace_params, "query": query}
-        eval_result = _run_evaluate_docs(params, query, new_context)
-        sufficient = bool(eval_result.get("sufficient"))
-        parse_failed = bool(eval_result.get("parse_failed"))
-        output_summary = (
-            "evaluator_parse_failed"
-            if parse_failed else f"sufficient={sufficient}"
-        )
-        output_detail = {
-            "sufficient": sufficient,
-            "missing_aspects": eval_result.get("missing_aspects", []),
-            "reason": eval_result.get("reason", ""),
-            "parse_failed": parse_failed,
-            "raw_preview": eval_result.get("raw", ""),
-        }
-        state_patch["evaluator_result"] = eval_result
-        if parse_failed:
-            state_patch["evaluator_parse_failed"] = True
-        # If actually insufficient (and parser did succeed), inject supplementary retrieval
-        if (not sufficient) and not parse_failed:
-            missing = eval_result.get("missing_aspects", [])
-            if missing:
-                output_summary += f", missing: {len(missing)} aspects"
-                if get_settings().tavily_api_key:
-                    extra_plan_steps.append({
-                        "action": "search_web",
-                        "params": {"query": missing[0], "max_results": 3},
-                        "reason": f"web supplement: {missing[0]}",
-                    })
-                for aspect in missing[:2]:
-                    extra_plan_steps.append({
-                        "action": "retrieve_local",
-                        "params": {"query": aspect, "top_k": 4},
-                        "reason": f"supplement: {aspect}",
-                    })
-
     elif action == "get_paper_detail":
         result = get_paper_detail(db, params.get("paper_id", ""))
         output_summary = "paper detail retrieved"
@@ -313,26 +270,20 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
         reason=trace_reason,
         detail=output_detail,
     )
-    emit("tool_result", {
-        "index": idx,
-        "action": action,
-        "duration_ms": duration,
-        "detail": output_detail,
+    emit("stage", {
+        "id": f"step:{idx}",
+        "stage": "retrieve_step",
+        "status": "warning" if output_detail.get("error") or output_summary.startswith("unknown") else "done",
+        "title": ACTION_LABELS.get(action, action),
         "summary": output_summary,
+        "detail": {"action": action, "params": trace_params, "result": output_detail},
+        "duration_ms": duration,
     })
-
-    updated_plan = state["plan"]
-    if extra_plan_steps:
-        updated_plan = list(state["plan"])
-        for i, extra in enumerate(extra_plan_steps):
-            updated_plan.insert(idx + 1 + i, extra)
 
     result: dict = {
         "plan_step_index": idx + 1,
         "retrieval_context": new_context,
         "step_traces": state["step_traces"] + [trace],
     }
-    if extra_plan_steps:
-        result["plan"] = updated_plan
     result.update(state_patch)
     return result

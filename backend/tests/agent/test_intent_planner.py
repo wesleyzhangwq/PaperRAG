@@ -49,7 +49,9 @@ def test_intent_node_comparison():
     assert "BERT" in result["intent"]["entities"]
 
 
-def test_planner_node_generates_plan():
+def test_planner_node_generates_plan_filtering_structural_steps():
+    """evaluate_docs / reasoning_synthesis are graph stages now — the planner
+    must filter them out of any LLM-emitted plan."""
     mock_llm = MagicMock()
     plan_json = json.dumps([
         {"action": "retrieve_local", "params": {"query": "attention", "top_k": 8}, "reason": "search locally"},
@@ -62,12 +64,22 @@ def test_planner_node_generates_plan():
     with patch("app.agent.nodes.planner._get_llm", return_value=mock_llm):
         result = planner_node(state, query="what is attention")
 
-    assert len(result["plan"]) == 3
-    assert result["plan"][0]["action"] == "retrieve_local"
+    assert [s["action"] for s in result["plan"]] == ["retrieve_local"]
     assert result["plan_step_index"] == 0
 
 
-def test_re_planner_sanitizes_synthesis_and_fills_missing_query():
+def test_planner_node_falls_back_when_no_executable_steps():
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = MagicMock(content="not valid json")
+
+    state = _base_state(intent={"type": "simple", "entities": [], "complexity": "low"})
+    with patch("app.agent.nodes.planner._get_llm", return_value=mock_llm):
+        result = planner_node(state, query="what is attention")
+
+    assert [s["action"] for s in result["plan"]] == ["retrieve_local"]
+
+
+def test_re_planner_sanitizes_structural_steps_and_fills_missing_query():
     mock_llm = MagicMock()
     mock_llm.invoke.return_value = MagicMock(content=json.dumps([
         {"action": "reasoning_synthesis", "params": {}, "reason": "answer"},
@@ -76,8 +88,6 @@ def test_re_planner_sanitizes_synthesis_and_fills_missing_query():
     ]))
     old_plan = [
         StepSpec(action="retrieve_local", params={"query": "original", "top_k": 8}, reason="search"),
-        StepSpec(action="evaluate_docs", params={}, reason="check"),
-        StepSpec(action="reasoning_synthesis", params={}, reason="answer"),
     ]
     state = _base_state(plan=old_plan, plan_step_index=len(old_plan))
 
@@ -91,5 +101,5 @@ def test_re_planner_sanitizes_synthesis_and_fills_missing_query():
 
     appended = result["plan"][len(old_plan):]
     assert result["plan_step_index"] == len(old_plan)
-    assert [step["action"] for step in appended] == ["retrieve_local", "evaluate_docs"]
+    assert [step["action"] for step in appended] == ["retrieve_local"]
     assert appended[0]["params"]["query"] == "Dr. RTL tool calling mechanism"

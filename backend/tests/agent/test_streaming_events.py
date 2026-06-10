@@ -1,3 +1,4 @@
+"""Streaming adapter tests for the v2 stage-event protocol."""
 import asyncio
 import inspect
 
@@ -34,79 +35,64 @@ def test_emit_surfaces_as_langgraph_custom_event():
     )
 
 
-def test_graph_update_event_maps_to_existing_sse_protocol():
+def test_custom_events_are_forwarded_verbatim():
+    raw_event = {
+        "event": "on_custom_event",
+        "name": "stage",
+        "data": {"id": "intent", "stage": "intent", "status": "done", "title": "理解问题"},
+    }
+    runtime = {"steps_count": 0, "reflections_count": 0}
+
+    events = graph_event_to_sse_events(raw_event, {}, runtime)
+
+    assert events == [{"type": "stage", "data": raw_event["data"]}]
+
+
+def test_chain_stream_updates_final_state_without_emitting():
+    """Node-state diffing is gone: chain_stream chunks only fold into
+    final_state for post-stream persistence."""
     raw_event = {
         "event": "on_chain_stream",
         "name": "LangGraph",
         "data": {
             "chunk": {
-                "intent": {
-                    "intent": {"type": "simple", "entities": [], "complexity": "low"},
-                    "step_traces": [],
-                }
+                "synthesis": {"final_answer": "hello", "step_traces": [{"action": "x"}]},
             }
         },
     }
-
-    final_state: dict = {"step_traces": []}
-    runtime = {"prev_traces_len": 0, "steps_count": 0, "reflections_count": 0}
+    final_state: dict = {}
+    runtime = {"steps_count": 0, "reflections_count": 0}
 
     events = graph_event_to_sse_events(raw_event, final_state, runtime)
 
-    assert events == [
-        {
-            "type": "intent",
-            "data": {"type": "simple", "entities": [], "complexity": "low"},
-        }
-    ]
+    assert events == []
+    assert final_state["final_answer"] == "hello"
 
 
-def test_executor_plan_update_is_streamed_with_step_index():
-    raw_event = {
-        "event": "on_chain_stream",
-        "name": "LangGraph",
+def test_runtime_counts_retrieve_steps_and_failed_groundedness():
+    runtime = {"steps_count": 0, "reflections_count": 0}
+
+    graph_event_to_sse_events({
+        "event": "on_custom_event",
+        "name": "stage",
+        "data": {"id": "step:0", "stage": "retrieve_step", "status": "done"},
+    }, {}, runtime)
+    graph_event_to_sse_events({
+        "event": "on_custom_event",
+        "name": "stage",
+        "data": {"id": "step:1", "stage": "retrieve_step", "status": "start"},
+    }, {}, runtime)
+    graph_event_to_sse_events({
+        "event": "on_custom_event",
+        "name": "stage",
         "data": {
-            "chunk": {
-                "executor": {
-                    "plan_step_index": 2,
-                    "plan": [
-                        {"action": "retrieve_local", "params": {}, "reason": "initial"},
-                        {"action": "evaluate_docs", "params": {}, "reason": "check"},
-                        {"action": "search_web", "params": {}, "reason": "supplement"},
-                        {"action": "reasoning_synthesis", "params": {}, "reason": "answer"},
-                    ],
-                    "step_traces": [
-                        {
-                            "node": "executor_node",
-                            "action": "evaluate_docs",
-                            "input_summary": "evaluate_docs()",
-                            "output_summary": "sufficient=False, missing: 1 aspects",
-                            "duration_ms": 12.5,
-                        }
-                    ],
-                }
-            }
+            "id": "groundedness", "stage": "groundedness", "status": "warning",
+            "detail": {"passed": False},
         },
-    }
-    final_state: dict = {
-        "plan": [
-            {"action": "retrieve_local", "params": {}, "reason": "initial"},
-            {"action": "evaluate_docs", "params": {}, "reason": "check"},
-            {"action": "reasoning_synthesis", "params": {}, "reason": "answer"},
-        ],
-        "step_traces": [],
-    }
-    runtime = {"prev_traces_len": 0, "steps_count": 0, "reflections_count": 0}
+    }, {}, runtime)
 
-    events = graph_event_to_sse_events(raw_event, final_state, runtime)
-
-    assert {
-        "type": "plan",
-        "data": {"steps": raw_event["data"]["chunk"]["executor"]["plan"], "total_steps": 4},
-    } in events
-    step_done = next(event for event in events if event["type"] == "step_done")
-    assert step_done["data"]["index"] == 1
-    assert step_done["data"]["action"] == "evaluate_docs"
+    assert runtime["steps_count"] == 1
+    assert runtime["reflections_count"] == 1
 
 
 def test_chat_stream_uses_langgraph_events_not_thread_queue_bridge():

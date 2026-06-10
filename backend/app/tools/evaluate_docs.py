@@ -6,12 +6,10 @@ confidence instead of assuming success.
 """
 from __future__ import annotations
 
-import json
-import re
-
 from langchain_openai import ChatOpenAI
 
 from app.core.config import get_settings
+from app.utils.llm_json import extract_json, strip_think
 
 _EVAL_PROMPT = """你是一个学术检索质量评估器。判断当前检索到的资料是否足以回答用户问题。
 
@@ -37,30 +35,6 @@ def _get_llm() -> ChatOpenAI:
         temperature=0.1,
         max_retries=2,
     )
-
-
-def _extract_json(text: str) -> dict | None:
-    """Best-effort JSON extraction from LLM output (tolerates code fences,
-    leading prose, etc.)."""
-    if not text:
-        return None
-    text = text.strip()
-    # Strip ``` fences
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.DOTALL).strip()
-    # Try direct parse
-    try:
-        return json.loads(text)
-    except (json.JSONDecodeError, TypeError):
-        pass
-    # Try to find the first {...} block
-    m = re.search(r"\{[\s\S]*\}", text)
-    if m:
-        try:
-            return json.loads(m.group(0))
-        except (json.JSONDecodeError, TypeError):
-            return None
-    return None
 
 
 def evaluate_docs(query: str, context_texts: list[str]) -> dict:
@@ -93,8 +67,12 @@ def evaluate_docs(query: str, context_texts: list[str]) -> dict:
             "raw": str(e),
         }
 
-    parsed = _extract_json(raw)
-    if parsed is None:
+    # Strip reasoning blocks BEFORE preview-slicing so chain-of-thought never
+    # reaches the UI detail drawer.
+    raw_preview = strip_think(raw)[:500] if isinstance(raw, str) else str(raw)[:500]
+
+    parsed = extract_json(raw)
+    if not isinstance(parsed, dict):
         # Parse failed — DO NOT silently set sufficient=True.
         # Caller will downgrade confidence based on parse_failed=True.
         return {
@@ -102,7 +80,7 @@ def evaluate_docs(query: str, context_texts: list[str]) -> dict:
             "reason": "evaluator_parse_failed",
             "missing_aspects": [],
             "parse_failed": True,
-            "raw": raw[:500] if isinstance(raw, str) else str(raw)[:500],
+            "raw": raw_preview,
         }
 
     return {
@@ -110,5 +88,5 @@ def evaluate_docs(query: str, context_texts: list[str]) -> dict:
         "reason": str(parsed.get("reason", "")),
         "missing_aspects": list(parsed.get("missing_aspects", [])),
         "parse_failed": False,
-        "raw": raw[:500] if isinstance(raw, str) else "",
+        "raw": raw_preview,
     }

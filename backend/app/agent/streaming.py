@@ -1,4 +1,16 @@
-"""LangGraph streaming event helpers."""
+"""LangGraph streaming event helpers.
+
+v2 protocol: every pipeline node self-reports lifecycle ``stage`` events
+(stable ids) and the planner publishes ``plan`` events via ``emit``. The
+adapter therefore only has two jobs:
+
+1. forward custom events (stage / plan / answer_start / token) as SSE
+2. fold ``on_chain_stream`` node-state updates into ``final_state`` so the
+   router can persist the result after the stream ends
+
+No node-state diffing, no index reconstruction — the old failure modes are
+structurally gone.
+"""
 from __future__ import annotations
 
 import json
@@ -28,75 +40,32 @@ def graph_event_to_sse_events(
     final_state: dict,
     runtime: dict,
 ) -> list[dict]:
-    """Map LangGraph ``astream_events`` records to the existing SSE protocol."""
+    """Map LangGraph ``astream_events`` records to the SSE protocol."""
     if event.get("event") == "on_custom_event":
-        return [{"type": event.get("name", ""), "data": event.get("data", {})}]
+        name = event.get("name", "")
+        data = event.get("data", {})
+        _update_runtime(name, data, runtime)
+        return [{"type": name, "data": data}]
 
     if event.get("event") != "on_chain_stream" or event.get("name") != "LangGraph":
         return []
 
+    # Fold node-state updates into final_state for post-stream persistence.
     chunk = (event.get("data") or {}).get("chunk") or {}
-    out: list[dict] = []
-    for node_name, node_state in chunk.items():
-        if not isinstance(node_state, dict):
-            continue
-        previous_plan = list(final_state.get("plan", []) or [])
-        final_state.update(node_state)
-        current_plan = list(final_state.get("plan", []) or [])
-        step_idx: int | None = None
+    for node_state in chunk.values():
+        if isinstance(node_state, dict):
+            final_state.update(node_state)
+    return []
 
-        if node_name == "executor":
-            step_idx = node_state.get("plan_step_index", 0) - 1
-            if 0 <= step_idx < len(current_plan):
-                step_spec = current_plan[step_idx]
-                out.append({
-                    "type": "step_start",
-                    "data": {
-                        "index": step_idx,
-                        "action": step_spec.get("action", ""),
-                        "reason": step_spec.get("reason", ""),
-                    },
-                })
-            if node_state.get("plan") and current_plan != previous_plan:
-                out.append({
-                    "type": "plan",
-                    "data": {"steps": current_plan, "total_steps": len(current_plan)},
-                })
 
-        traces = node_state.get("step_traces", [])
-        prev_traces_len = int(runtime.get("prev_traces_len", 0))
-        for trace in traces[prev_traces_len:]:
-            trace_data = dict(trace)
-            if step_idx is not None and "index" not in trace_data:
-                trace_data["index"] = step_idx
-            out.append({"type": "step_done", "data": trace_data})
-            runtime["steps_count"] = int(runtime.get("steps_count", 0)) + 1
-        runtime["prev_traces_len"] = len(final_state.get("step_traces", []))
-
-        if node_name == "intent" and node_state.get("intent"):
-            out.append({"type": "intent", "data": node_state["intent"]})
-
-        if node_name == "planner" and node_state.get("plan"):
-            out.append({
-                "type": "plan",
-                "data": {
-                    "steps": node_state["plan"],
-                    "total_steps": len(node_state["plan"]),
-                },
-            })
-
-        if node_name == "reflection" and node_state.get("reflection_result"):
+def _update_runtime(name: str, data: Any, runtime: dict) -> None:
+    """Track step/reflection counters for the final ``done`` event."""
+    if name != "stage" or not isinstance(data, dict):
+        return
+    status = data.get("status")
+    if data.get("stage") == "retrieve_step" and status in ("done", "warning", "failed"):
+        runtime["steps_count"] = int(runtime.get("steps_count", 0)) + 1
+    if data.get("stage") == "groundedness" and status in ("done", "warning"):
+        detail = data.get("detail") or {}
+        if detail.get("passed") is False:
             runtime["reflections_count"] = int(runtime.get("reflections_count", 0)) + 1
-            out.append({"type": "reflection", "data": node_state["reflection_result"]})
-
-        if node_name == "re_planner" and node_state.get("plan"):
-            out.append({
-                "type": "plan",
-                "data": {"steps": current_plan, "total_steps": len(current_plan)},
-            })
-            out.append({
-                "type": "re_plan",
-                "data": {"new_steps": node_state["plan"][-3:]},
-            })
-
-    return out

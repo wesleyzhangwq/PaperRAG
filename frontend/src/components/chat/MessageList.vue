@@ -12,14 +12,13 @@
       <template v-for="msg in messages" :key="msg.id">
         <UserBubble v-if="msg.role === 'user'" :content="msg.content" />
         <div v-else class="space-y-3">
-          <!-- ① While streaming: show live progress card -->
-          <ThinkingCard
-            v-if="hasThinking(msg)"
-            :steps="msg.thinking || []"
-            :tool-calls="msg.toolCalls || []"
-            :tool-results="msg.toolResults || []"
+          <!-- ① Agent activity timeline (live during streaming, replayable after) -->
+          <AgentTimeline
+            v-if="hasTimeline(msg)"
+            :items="msg.timeline || []"
             :elapsed-ms="msg.elapsedMs || 0"
             :running="!!msg.pending"
+            :answering="!!msg.answering && !!msg.pending"
           />
           <!-- ② Once content arrives (or presentation), show the structured AnswerCard -->
           <AnswerCard
@@ -43,7 +42,7 @@ import { ref, watch, nextTick } from 'vue'
 import type { CorpusOverviewResponse, Message } from '../../types'
 import { useConversationsStore } from '../../stores/conversations'
 import UserBubble from './UserBubble.vue'
-import ThinkingCard from './ThinkingCard.vue'
+import AgentTimeline from './AgentTimeline.vue'
 import AnswerCard from '../answer/AnswerCard.vue'
 import CorpusOverviewCard from './CorpusOverviewCard.vue'
 
@@ -68,7 +67,7 @@ watch(
       last?.content,
       last?.pending,
       last?.elapsedMs,
-      last?.thinking?.length,
+      last?.timeline?.length,
       last?.presentation,
     ]
   },
@@ -95,8 +94,8 @@ function scrollToBottom() {
   el.scrollTop = el.scrollHeight
 }
 
-function hasThinking(msg: Message): boolean {
-  return msg.role === 'assistant' && !!(msg.pending || msg.thinking?.length)
+function hasTimeline(msg: Message): boolean {
+  return msg.role === 'assistant' && !!(msg.pending || msg.timeline?.length)
 }
 
 function serverMessageId(id: string): number | undefined {

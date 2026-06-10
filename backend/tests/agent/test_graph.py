@@ -1,14 +1,27 @@
-"""Test agent graph compilation and basic flow."""
+"""Test agent graph compilation and basic flow (v2 orchestration)."""
 from unittest.mock import patch, MagicMock
 from langchain_core.documents import Document
 
-from app.agent.graph import build_agent_graph, run_agent_sync, route_after_reflection
+from app.agent.graph import (
+    build_agent_graph,
+    route_after_guard,
+    route_after_reflection,
+    run_agent_sync,
+)
+
+EXPECTED_NODES = {
+    "guard", "intent", "planner", "route", "executor", "evidence",
+    "sufficiency", "synthesis", "groundedness", "re_planner",
+    "citation_gate", "presentation",
+}
 
 
-def test_graph_compiles():
+def test_graph_compiles_with_pipeline_nodes():
     mock_db = MagicMock()
     graph = build_agent_graph(mock_db)
     assert graph is not None
+    nodes = set(graph.get_graph().nodes.keys())
+    assert EXPECTED_NODES <= nodes
 
 
 def test_run_agent_sync_returns_response():
@@ -25,11 +38,11 @@ def test_run_agent_sync_returns_response():
     mock_llm.invoke.side_effect = [
         # intent
         MagicMock(content='{"type": "simple", "entities": ["attention"], "complexity": "low"}'),
-        # planner
-        MagicMock(content='[{"action": "retrieve_local", "params": {"query": "attention", "top_k": 8}, "reason": "search"}, {"action": "evaluate_docs", "params": {}, "reason": "check"}, {"action": "reasoning_synthesis", "params": {}, "reason": "answer"}]'),
-        # evaluate_docs
+        # planner (structural steps are filtered out by the sanitizer)
+        MagicMock(content='[{"action": "retrieve_local", "params": {"query": "attention", "top_k": 8}, "reason": "search"}]'),
+        # sufficiency (evaluate_docs tool)
         MagicMock(content='{"sufficient": true, "reason": "ok", "missing_aspects": []}'),
-        # reflection
+        # groundedness
         MagicMock(content='{"passed": true, "citation_ok": true, "completeness_ok": true, "logic_ok": true, "issues": [], "fix_strategy": null}'),
     ]
     # Synthesis uses llm.stream() which yields chunk objects
@@ -41,7 +54,7 @@ def test_run_agent_sync_returns_response():
          patch("app.agent.nodes.planner._get_llm", return_value=mock_llm), \
          patch("app.tools.evaluate_docs._get_llm", return_value=mock_llm), \
          patch("app.agent.nodes.synthesis._get_llm", return_value=mock_llm), \
-         patch("app.agent.nodes.reflection._get_llm", return_value=mock_llm), \
+         patch("app.agent.nodes.groundedness._get_llm", return_value=mock_llm), \
          patch("app.agent.nodes.executor.retrieve", return_value=mock_docs):
 
         result = run_agent_sync(mock_db, "what is attention", session_id="test-session")
@@ -50,8 +63,32 @@ def test_run_agent_sync_returns_response():
     assert "1706.03762" in result.answer
 
 
-def test_route_after_reflection_passes_to_final_answer():
-    assert route_after_reflection({"reflection_result": {"passed": True}, "reflection_count": 0}, 2) == "final_answer"
+def test_run_agent_sync_blocked_query_skips_llm_entirely():
+    """Guard-blocked queries must short-circuit to presentation with a refusal."""
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.one_or_none.return_value = None
+
+    mock_llm = MagicMock()  # would raise if invoked (no side_effect set ⇒ returns MagicMock)
+    with patch("app.agent.nodes.intent._get_llm", return_value=mock_llm), \
+         patch("app.agent.nodes.planner._get_llm", return_value=mock_llm):
+        result = run_agent_sync(mock_db, "   ", session_id="blocked-session")
+
+    assert "请输入" in result.answer
+    mock_llm.invoke.assert_not_called()
+
+
+# ------------------------------------------------------------------- routing
+
+def test_route_after_guard_allows():
+    assert route_after_guard({"guard_result": {"allowed": True}}) == "intent"
+
+
+def test_route_after_guard_blocks_to_presentation():
+    assert route_after_guard({"guard_result": {"allowed": False}}) == "presentation"
+
+
+def test_route_after_reflection_passes_to_citation_gate():
+    assert route_after_reflection({"reflection_result": {"passed": True}, "reflection_count": 0}, 2) == "citation_gate"
 
 
 def test_route_after_reflection_re_generate_to_synthesis():
@@ -78,4 +115,4 @@ def test_route_after_reflection_stops_at_retry_budget():
         "reflection_count": 2,
     }
 
-    assert route_after_reflection(state, 2) == "final_answer"
+    assert route_after_reflection(state, 2) == "citation_gate"

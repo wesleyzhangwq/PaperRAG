@@ -6,6 +6,7 @@ import time
 from langchain_openai import ChatOpenAI
 
 from app.agent.prompts.synthesis import SYNTHESIS_PROMPT, SYNTHESIS_WITH_ISSUES_PROMPT
+from app.agent.stages import stage
 from app.agent.state import AgentState, StepTrace
 from app.agent.streaming import emit
 from app.core.config import get_settings
@@ -78,35 +79,39 @@ def synthesis_node(state: AgentState, *, query: str, issues: list[str] | None = 
     so the frontend can render token-by-token without waiting for the node to finish.
     """
     t0 = time.perf_counter()
-    llm = _get_llm(streaming=True)
-    context = _format_context(state)
+    attempt = int(state.get("reflection_count", 0) or 0) + 1
+    with stage("synthesis", stage_id=f"synthesis:{attempt}" if attempt > 1 else "synthesis",
+               title="生成回答" if attempt == 1 else "重新生成回答") as s:
+        llm = _get_llm(streaming=True)
+        context = _format_context(state)
 
-    if issues:
-        prompt = SYNTHESIS_WITH_ISSUES_PROMPT.format(
-            query=query, context=context, issues="\n".join(f"- {i}" for i in issues)
-        )
-    else:
-        prompt = SYNTHESIS_PROMPT.format(query=query, context=context)
+        if issues:
+            prompt = SYNTHESIS_WITH_ISSUES_PROMPT.format(
+                query=query, context=context, issues="\n".join(f"- {i}" for i in issues)
+            )
+        else:
+            prompt = SYNTHESIS_PROMPT.format(query=query, context=context)
 
-    chunks: list[str] = []
-    reasoning_chunks: list[str] = []
-    in_think = False  # state machine for inline <think>...</think> blocks
-    emit("answer_start", {"attempt": int(state.get("reflection_count", 0) or 0) + 1, "reset": True})
-    for chunk in llm.stream(prompt):
-        # Reasoning models (e.g. MiniMax-M2.7) may expose reasoning tokens
-        # via additional_kwargs.reasoning_content (incremental, OpenAI-style).
-        rk = getattr(chunk, "additional_kwargs", None) or {}
-        rtok = rk.get("reasoning_content") if isinstance(rk, dict) else None
-        if rtok:
-            reasoning_chunks.append(rtok)
-        if chunk.content:
-            chunks.append(chunk.content)
-            # Route inline <think>...</think> tokens to reasoning, not answer.
-            stripped, in_think = _route_token(chunk.content, in_think, reasoning_chunks)
-            if stripped:
-                emit("token", {"t": stripped})
+        chunks: list[str] = []
+        reasoning_chunks: list[str] = []
+        in_think = False  # state machine for inline <think>...</think> blocks
+        emit("answer_start", {"attempt": attempt, "reset": True})
+        for chunk in llm.stream(prompt):
+            # Reasoning models (e.g. MiniMax-M2.7) may expose reasoning tokens
+            # via additional_kwargs.reasoning_content (incremental, OpenAI-style).
+            rk = getattr(chunk, "additional_kwargs", None) or {}
+            rtok = rk.get("reasoning_content") if isinstance(rk, dict) else None
+            if rtok:
+                reasoning_chunks.append(rtok)
+            if chunk.content:
+                chunks.append(chunk.content)
+                # Route inline <think>...</think> tokens to reasoning, not answer.
+                stripped, in_think = _route_token(chunk.content, in_think, reasoning_chunks)
+                if stripped:
+                    emit("token", {"t": stripped})
 
-    answer = strip_hidden_reasoning("".join(chunks))
+        answer = strip_hidden_reasoning("".join(chunks))
+        s.done(f"{len(answer)} 字符", detail={"chars": len(answer), "attempt": attempt})
 
     duration = round((time.perf_counter() - t0) * 1000, 2)
     trace = StepTrace(

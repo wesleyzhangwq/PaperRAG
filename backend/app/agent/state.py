@@ -46,6 +46,14 @@ class AgentState(TypedDict, total=False):
     final_answer: Optional[str]
     reflection_result: Optional[dict]
     sources: Optional[list]
+    # enterprise pipeline stages (v2 orchestration)
+    guard_result: Optional[dict]            # {allowed, reason, flags} from the guard node
+    route_decision: Optional[dict]          # {sources, adjustments} from the retrieval router
+    evidence_stats: Optional[dict]          # {before, after, dropped_*} from evidence processing
+    sufficiency_result: Optional[dict]      # structured evaluate_docs output (graph-level node)
+    sufficiency_round: int                  # supplementary-retrieval budget counter
+    degraded: bool                          # sufficiency budget exhausted → answer with caveat
+    removed_citations: list[str]            # hallucinated citation ids stripped by citation_gate
     # optional metadata (filled progressively for the presentation layer)
     is_fallback: bool                       # any retrieve_local fell back to user query
     evaluator_result: Optional[dict]        # latest evaluate_docs output

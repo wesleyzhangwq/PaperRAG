@@ -1,9 +1,9 @@
-# PaperRAG — Architecture & Design Philosophy
+# Cite Scope — Architecture & Design Philosophy
 
 ## What This Project Is
 
-PaperRAG is an **Agentic RAG** (Retrieval-Augmented Generation) system for academic paper Q&A.
-It ingests arXiv PDFs into a vector store, then uses an LLM-driven adaptive planning agent
+Cite Scope is an **Agentic RAG** (Retrieval-Augmented Generation) system for academic paper Q&A.
+It imports arXiv metadata and PDFs into a vector store, then uses an LLM-driven adaptive planning agent
 to retrieve, evaluate, and synthesize cited answers — with self-reflection for quality control.
 
 The system is designed for portfolio/interview presentation: it prioritizes
@@ -13,58 +13,76 @@ The system is designed for portfolio/interview presentation: it prioritizes
 
 ## Architecture Overview
 
+The graph mirrors the enterprise agentic-RAG pipeline — one node per stage
+(安全校验 → 意图 → 规划 → 检索路由 → 多源检索 → 证据处理 → 充分性判断 →
+生成 → groundedness → 引用过滤 → 输出):
+
 ```
 User Query + Chat History
         │
         ▼
-┌──────────────┐
-│    intent     │  LLM classifies: type (simple/complex/comparison), entities, complexity
-└──────┬───────┘
+┌──────────────┐ blocked (refusal text)
+│    guard      │ ───────────────────────────────────────────────┐
+└──────┬───────┘  deterministic: empty/oversize/injection flags  │
+       ▼ ok                                                      │
+┌──────────────┐                                                 │
+│    intent     │  LLM classifies: type, entities, complexity    │
+└──────┬───────┘                                                 │
+       ▼                                                         │
+┌──────────────┐                                                 │
+│   planner     │  LLM plans RETRIEVAL-ONLY steps                │
+└──────┬───────┘  (sufficiency & synthesis are graph stages)     │
+       ▼                                                         │
+┌──────────────┐                                                 │
+│    route      │  deterministic routing policy:                 │
+└──────┬───────┘  local always / arXiv for recency / drop       │
+       ▼          unconfigured web                               │
+┌──────────────┐ ◄──────────────────────────────┐                │
+│   executor    │  Multi-source retrieval loop   │                │
+│   (loop)      │  (6 tools, stable step ids)    │                │
+└──────┬───────┘                                 │                │
+       ▼ plan exhausted                          │                │
+┌──────────────┐                                 │                │
+│   evidence    │  dedupe → score rerank →       │                │
+└──────┬───────┘  per-paper cap → char budget    │                │
+       ▼                                         │                │
+┌──────────────┐  insufficient + budget left     │                │
+│  sufficiency  │ ──────────────────────► ┌──────────────┐       │
+└──────┬───────┘                          │  re_planner   │       │
+       ▼ sufficient / degraded            └──────▲───────┘       │
+┌──────────────┐                                 │                │
+│  synthesis    │  Streams cited answer tokens   │                │
+│  (streaming)  │ ◄───────── re_generate ──┐     │                │
+└──────┬───────┘                           │     │                │
+       ▼                                   │     │                │
+┌──────────────┐  fail + re_retrieve ──────┼─────┘                │
+│ groundedness  │  deterministic citation   │                      │
+│  (2 layers)   │  precheck + LLM 3-dim ────┘                      │
+└──────┬───────┘                                                  │
+       ▼ pass / budget exhausted                                  │
+┌──────────────┐                                                  │
+│ citation_gate │  resolve [arxiv:ID] → Sources; STRIP            │
+└──────┬───────┘  unverifiable citations; ACL hook                │
+       ▼                                                          │
+┌──────────────┐                                                  │
+│ presentation  │ ◄────────────────────────────────────────────────┘
+└──────┬───────┘  confidence verdict, step labels, source cards
        ▼
-┌──────────────┐
-│   planner     │  LLM generates a structured execution plan: List[StepSpec]
-└──────┬───────┘
-       ▼
-┌──────────────┐ ◄──────────────────────────────┐
-│   executor    │  Dispatches plan steps to 7    │
-│   (loop)      │  tools sequentially            │
-└──────┬───────┘                                 │
-       ▼                                         │
-┌──────────────┐                                 │
-│  synthesis    │  Generates cited answer from    │
-│  (streaming)  │  accumulated context            │
-└──────┬───────┘                                 │
-       ▼                                         │
-┌──────────────┐      fail + re_retrieve         │
-│  reflection   │ ──────────────────────► ┌──────────────┐
-│  (3 dims)     │                         │  re_planner   │
-└──────┬───────┘      fail + re_generate  └──────┬───────┘
-       │           ──────────► synthesis          │
-       │ pass                                     │
-       ▼
-┌──────────────┐
-│ final_answer  │  Extract [arxiv:ID] → Source objects from DB
-└──────┬───────┘
-       ▼
-┌──────────────┐
-│ presentation  │  Build productized UI payload (confidence, step labels, source cards)
-└──────────────┘
-       ▼
-      END
+      END         (logging via persisted traces + /feedback loop)
 ```
 
 ### Tech Stack
 
 | Layer     | Technology                                       |
 |-----------|--------------------------------------------------|
-| Agent     | LangGraph StateGraph (7 nodes + conditional edges) |
+| Agent     | LangGraph StateGraph (12 nodes + conditional edges) |
 | LLM       | MiniMax M2.7 via OpenAI-compatible API           |
-| Embedding | Alibaba text-embedding-v4 (DashScope)            |
+| Embedding | SiliconFlow BAAI/bge-m3 via OpenAI-compatible API |
 | Vector DB | Qdrant (hybrid: dense + BM25 sparse fusion)      |
 | SQL DB    | MySQL 8 (paper metadata, chat history, conversations) |
 | Backend   | FastAPI + SQLAlchemy + Pydantic                  |
 | Frontend  | Vue 3 + Tailwind CSS + Pinia                     |
-| Streaming | SSE (Server-Sent Events) via thread + Queue      |
+| Streaming | SSE via LangGraph `astream_events` + custom event adapter |
 
 ---
 
@@ -86,10 +104,9 @@ User Query + Chat History
    `get_paper_chunks`) is a standalone module under `backend/app/tools/`. The executor
    dispatches by action name; adding a tool means adding a file and a dispatch case.
 
-5. **Separation of concerns in graph nodes.** Nodes are pure functions
-   `(state, **deps) → partial state update`. They don't know about HTTP, SSE, or threads.
-   The streaming infrastructure (`streaming.py` + `chat.py` worker thread) wraps the graph
-   externally.
+5. **Separation of concerns in graph nodes.** Nodes return partial state updates and only emit
+   LangGraph custom events for live UI traces. HTTP and SSE protocol mapping stay in
+   `backend/app/routers/chat.py` and `backend/app/agent/streaming.py`.
 
 ---
 
@@ -100,14 +117,19 @@ backend/app/
 ├── agent/                     # LangGraph agent core
 │   ├── graph.py               # StateGraph definition + compile + run_agent_sync()
 │   ├── state.py               # AgentState, StepSpec, StepTrace, ReflectionResult
-│   ├── streaming.py           # ContextVar-based Queue for real-time SSE push
+│   ├── streaming.py           # custom-event forwarder + final_state folding
+│   ├── stages.py              # stage() context manager, STAGE_TITLES/ACTION_LABELS, emit_plan
 │   ├── nodes/                 # One file per graph node
+│   │   ├── guard.py           # Content safety & validity checks (deterministic)
 │   │   ├── intent.py          # Query classification (LLM)
-│   │   ├── planner.py         # Plan generation + re_planner (LLM)
+│   │   ├── planner.py         # Retrieval-only plan + re_planner (LLM)
+│   │   ├── route.py           # Source-routing policy (deterministic)
 │   │   ├── executor.py        # Tool dispatch loop (no LLM, calls tools)
+│   │   ├── evidence.py        # Filter/rerank/compress context (deterministic)
+│   │   ├── sufficiency.py     # Evidence sufficiency gate + conditional edge (LLM)
 │   │   ├── synthesis.py       # Answer generation with streaming (LLM)
-│   │   ├── reflection.py      # 3-dimension self-verification (LLM)
-│   │   ├── final_answer.py    # Citation → Source object resolution (DB)
+│   │   ├── groundedness.py    # Citation precheck + 3-dim verification (LLM)
+│   │   ├── citation_gate.py   # Citation resolution + hallucination strip (DB)
 │   │   └── presentation.py    # UI-friendly payload (confidence, labels)
 │   └── prompts/               # System prompts for each LLM-calling node
 │
@@ -124,7 +146,7 @@ backend/app/
 │   ├── chat.py                # POST /chat (sync) + POST /chat/stream (SSE)
 │   ├── conversations.py       # CRUD for conversation sessions
 │   ├── papers.py              # GET /papers (list/search)
-│   ├── upload.py              # POST /upload (PDF upload + auto-ingest)
+│   ├── upload.py              # POST /upload/arxiv (arXiv import + auto-ingest)
 │   └── ingest.py              # POST /ingest (admin: re-process PDFs)
 │
 ├── services/
@@ -178,25 +200,34 @@ frontend/src/
 
 ---
 
-## SSE Streaming Protocol
+## SSE Streaming Protocol (v2 — stable-id stage events)
+
+Every pipeline node self-reports lifecycle `stage` events with a STABLE id;
+the frontend upserts a timeline by id — no index reconstruction.
 
 ```
 POST /chat/stream → text/event-stream
 
 event: conversation   → { conversation_id }
-event: intent         → { type, entities, complexity }
-event: plan           → { steps: [...], total_steps }
-event: step_start     → { index, action, reason }
-event: step_done      → { node, action, input_summary, output_summary, duration_ms }
-event: token          → { t: "partial text" }        # real-time synthesis tokens
-event: reflection     → { passed, citation_ok, completeness_ok, logic_ok, issues }
-event: re_plan        → { new_steps: [...] }
+event: stage          → { id, stage, status, title, summary?, detail?, duration_ms? }
+                        # id: "guard"|"intent"|"plan"|"route"|"step:N"|"evidence"|
+                        #     "sufficiency"|"synthesis"|"groundedness"|"citation"
+                        # status: start | done | warning | failed | skipped
+event: plan           → { revision, steps: [{ id: "step:N", action, title, reason }] }
+                        # re-published on every plan change (planner/route/re_planner)
+event: answer_start   → { attempt, reset }            # re-generation resets the bubble
+event: token          → { t: "partial text" }         # real-time synthesis tokens
 event: sources        → { sources: [{ paper_id, title, ... }] }
 event: presentation   → { confidence, steps, retrieval_summary, source_cards }
 event: elapsed        → { ms }                        # heartbeat
 event: done           → { steps_count, reflections }
 event: error          → { message, type }
 ```
+
+Frontend (`useSSE.ts`) parses per the SSE spec (multi-line data, CRLF-tolerant,
+blank-line dispatch). Tokens render via rAF batching — zero artificial delay,
+at most one DOM update per frame. The timeline reducer lives in
+`frontend/src/utils/timeline.ts`; the UI is `AgentTimeline.vue`.
 
 ---
 

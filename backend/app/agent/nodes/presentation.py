@@ -16,6 +16,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.agent.stages import ACTION_LABELS
 from app.agent.state import AgentState
 from app.models.paper import Paper
 
@@ -26,23 +27,9 @@ _ARXIV_COUNT_RE = re.compile(r"(\d+)\s+papers", re.IGNORECASE)
 _WEB_COUNT_RE = re.compile(r"(\d+)\s+results", re.IGNORECASE)
 
 
-# ---------------------------------------------------------------------------
-# Label mappings (internal → user-facing Chinese)
-# ---------------------------------------------------------------------------
-STEP_LABELS = {
-    "intent_analysis": "理解你的问题",
-    "planning": "制定检索计划",
-    "query_rewrite": "优化检索关键词",
-    "retrieve_local": "检索相关论文",
-    "retrieve_arxiv": "查询 arXiv 在线",
-    "search_web": "查询网络资料",
-    "evaluate_docs": "评估资料充分性",
-    "get_paper_detail": "查询论文详情",
-    "get_paper_chunks": "提取论文片段",
-    "reasoning_synthesis": "生成综合回答",
-    "self_reflection": "自我校验回答",
-    "re_planning": "补充检索计划",
-}
+# Label mapping (internal → user-facing Chinese) — single source of truth
+# lives in app.agent.stages; kept as a module attribute for compatibility.
+STEP_LABELS = ACTION_LABELS
 
 
 # ---------------------------------------------------------------------------
@@ -113,6 +100,52 @@ def _step_user_message(action: str, detail: dict, summary: str) -> tuple[str, st
 
     if action.startswith("get_paper_"):
         return "已提取该论文的相关内容。", "completed"
+
+    # --- v2 orchestration stages ---
+    if action == "guard":
+        flags = detail.get("flags") or []
+        if not detail.get("allowed", True):
+            return f"问题未通过安全校验（{detail.get('reason', '')}）。", "warning"
+        if flags:
+            return "检测到可疑指令注入特征，已标记并继续。", "warning"
+        return "安全校验通过。", "completed"
+
+    if action == "route":
+        labels = detail.get("source_labels") or []
+        adjustments = detail.get("adjustments") or []
+        msg = "检索来源：" + ("、".join(labels) if labels else "无")
+        if adjustments:
+            return msg + f"（路由策略调整 {len(adjustments)} 项）。", "completed"
+        return msg + "。", "completed"
+
+    if action == "evidence_process":
+        before, after = detail.get("before", 0), detail.get("after", 0)
+        if before == 0:
+            return "没有可处理的证据片段。", "warning"
+        return f"证据重排与压缩：{before} → {after} 个片段（{detail.get('papers', 0)} 篇论文）。", "completed"
+
+    if action == "sufficiency_check":
+        if detail.get("parse_failed"):
+            return "充分性评估未成功解析，本次回答降级为低可信度参考。", "warning"
+        if not detail.get("sufficient"):
+            missing = detail.get("missing_aspects") or []
+            extra = f"缺少:{'、'.join(str(m) for m in missing[:3])}" if missing else ""
+            return f"证据不足以完整回答问题。{extra}".strip(), "warning"
+        return "证据足以支撑回答。", "completed"
+
+    if action == "groundedness_check":
+        if detail.get("passed"):
+            return "答案通过有据性校验（引用/完整性/逻辑）。", "completed"
+        issues = detail.get("issues") or []
+        return ("有据性校验未通过：" + (issues[0] if issues else "存在质量问题") + "。"), "warning"
+
+    if action == "citation_gate":
+        removed = detail.get("removed") or []
+        resolved = detail.get("resolved")
+        resolved_n = len(resolved) if isinstance(resolved, list) else int(resolved or 0)
+        if removed:
+            return f"解析 {resolved_n} 个引用，剔除 {len(removed)} 个无法核实的引用。", "warning"
+        return f"解析并核实 {resolved_n} 个引用。" if resolved_n else "本次回答没有引用。", "completed"
 
     # Generic
     return summary or "已完成。", "completed"
@@ -241,10 +274,12 @@ def _build_retrieval_summary(
 # ---------------------------------------------------------------------------
 def _compute_confidence(state: AgentState, sources_count: int) -> tuple[str, str]:
     """Return (level, reason). Level ∈ {high, medium, low}."""
-    eval_result = state.get("evaluator_result") or {}
+    eval_result = state.get("sufficiency_result") or state.get("evaluator_result") or {}
     parse_failed = bool(state.get("evaluator_parse_failed") or eval_result.get("parse_failed"))
     sufficient = bool(eval_result.get("sufficient"))
     is_fallback = bool(state.get("is_fallback"))
+    degraded = bool(state.get("degraded"))
+    removed_citations = list(state.get("removed_citations") or [])
     reflection = state.get("reflection_result") or {}
     reflection_passed = bool(reflection.get("passed", True))
 
@@ -252,14 +287,18 @@ def _compute_confidence(state: AgentState, sources_count: int) -> tuple[str, str
         return "low", "资料充分性评估未成功解析，因此本次回答只作为低可信度参考。"
     if sources_count == 0:
         return "low", "未找到可引用的论文来源。"
+    if degraded:
+        return "low", "补充检索后证据仍不充分，回答已注明局限，请谨慎参考。"
     if is_fallback and not sufficient:
         return "low", "检索使用了扩展查询且资料不足，回答的可靠性较弱。"
     if not sufficient:
         return "low", "检索到的资料不足以完整回答问题。"
+    if removed_citations:
+        return "medium", f"回答中 {len(removed_citations)} 个引用未通过核实已被剔除，其余内容可信。"
     if is_fallback or not reflection_passed:
         return "medium", "检索结果相关但证据不够完整，建议谨慎使用。"
     if sources_count >= 2 and sufficient and reflection_passed:
-        return "high", "检索结果高度相关且通过了自我校验。"
+        return "high", "检索结果高度相关且通过了有据性校验。"
     return "medium", "检索结果相关但证据有限。"
 
 
@@ -280,7 +319,12 @@ def _build_steps_from_traces(state: AgentState) -> list[dict]:
         params: dict[str, Any] = dict(trace.get("params") or {})
         reason = str(trace.get("reason") or "")
         # Heuristic: nth executor trace ≈ nth plan step
-        if not params and action not in ("intent_analysis", "planning", "reasoning_synthesis", "self_reflection", "re_planning"):
+        _node_level_actions = (
+            "intent_analysis", "planning", "reasoning_synthesis", "self_reflection",
+            "re_planning", "guard", "route", "evidence_process", "sufficiency_check",
+            "groundedness_check", "citation_gate",
+        )
+        if not params and action not in _node_level_actions:
             # try to find any plan step with same action; consume in order
             for ps in plan:
                 if ps.get("action") == action:

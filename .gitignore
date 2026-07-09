@@ -60,5 +60,8 @@ logs/
 # Docker volumes
 mysql_data/
 
+# Local agent worktrees
+.worktrees/
+
 # Legacy Chroma persist (project uses Qdrant only)
 chroma_db/

@@ -30,6 +30,7 @@ def init_db() -> None:
     from app.models import upload_job  # noqa: F401 register tables
     Base.metadata.create_all(bind=engine)
     _migrate_chat_history()
+    _migrate_papers()
 
 
 def _migrate_chat_history() -> None:
@@ -64,6 +65,38 @@ def _migrate_chat_history() -> None:
                 ))
     except Exception as e:
         log.warning("chat_history migration skipped: %s", e)
+
+
+def _migrate_papers() -> None:
+    """Idempotently add Graph RAG sync status columns to existing tables."""
+    try:
+        inspector = inspect(engine)
+        if "papers" not in inspector.get_table_names():
+            return
+        existing = {column["name"] for column in inspector.get_columns("papers")}
+        statements = {
+            "graph_sync_status": (
+                "ALTER TABLE papers ADD COLUMN graph_sync_status "
+                "VARCHAR(16) NOT NULL DEFAULT 'pending'"
+            ),
+            "graph_synced_at": (
+                "ALTER TABLE papers ADD COLUMN graph_synced_at DATETIME NULL"
+            ),
+            "graph_sync_error": (
+                "ALTER TABLE papers ADD COLUMN graph_sync_error TEXT NULL"
+            ),
+        }
+        with engine.begin() as connection:
+            for column, statement in statements.items():
+                if column not in existing:
+                    connection.execute(text(statement))
+            if "graph_sync_status" not in existing:
+                connection.execute(text(
+                    "CREATE INDEX ix_papers_graph_sync_status "
+                    "ON papers (graph_sync_status)"
+                ))
+    except Exception as exc:
+        log.warning("papers graph migration skipped: %s", exc)
 
 
 def get_db():

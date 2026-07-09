@@ -38,6 +38,11 @@ class Paper(Base):
 
     ingest_status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
     ingest_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    graph_sync_status: Mapped[str] = mapped_column(
+        String(16), default="pending", index=True, nullable=False
+    )
+    graph_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    graph_sync_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     num_chunks: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(

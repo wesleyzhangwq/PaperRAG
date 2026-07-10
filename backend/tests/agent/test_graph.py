@@ -1,4 +1,5 @@
 """Test agent graph compilation and basic flow (v2 orchestration)."""
+from contextlib import nullcontext
 from unittest.mock import patch, MagicMock
 from langchain_core.documents import Document
 
@@ -6,6 +7,7 @@ from app.agent.graph import (
     build_agent_graph,
     route_after_guard,
     route_after_reflection,
+    run_agent_eval_sync,
     run_agent_sync,
 )
 
@@ -61,6 +63,38 @@ def test_run_agent_sync_returns_response():
 
     assert result.answer is not None
     assert "1706.03762" in result.answer
+
+
+def test_run_agent_eval_sync_exposes_raw_and_final_context_paper_ids():
+    mock_graph = MagicMock()
+    mock_graph.invoke.return_value = {
+        "final_answer": "answer",
+        "sources": [],
+        "retrieved_paper_ids": ["p1", "p2"],
+        "retrieval_context": [
+            Document(page_content="kept", metadata={"paper_id": "p2"}),
+            Document(page_content="not used for generation", metadata={"paper_id": "p3"}),
+        ],
+        "synthesis_context_count": 1,
+        "synthesis_context_paper_ids": ["p2"],
+        "step_traces": [],
+        "reflection_result": None,
+    }
+
+    with (
+        patch("app.agent.graph.build_agent_graph", return_value=mock_graph),
+        patch("app.agent.graph.open_sync_checkpointer", return_value=nullcontext(None)),
+    ):
+        response, retrieved_paper_ids, context_paper_ids = run_agent_eval_sync(
+            MagicMock(),
+            "test query",
+            session_id="eval-session",
+        )
+
+    assert response.answer == "answer"
+    assert response.used_chunks == 1
+    assert retrieved_paper_ids == ["p1", "p2"]
+    assert context_paper_ids == ["p2"]
 
 
 def test_run_agent_sync_blocked_query_skips_llm_entirely():

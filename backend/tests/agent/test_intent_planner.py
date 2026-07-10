@@ -79,6 +79,48 @@ def test_planner_node_falls_back_when_no_executable_steps():
     assert [s["action"] for s in result["plan"]] == ["retrieve_local"]
 
 
+def test_planner_node_normalizes_query_list_params_for_live_retrieval():
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = MagicMock(content=json.dumps([
+        {
+            "action": "retrieve_arxiv",
+            "params": {"queries": ["voice agent benchmark", "MoE flow matching"]},
+            "reason": "supplement live search",
+        }
+    ]))
+
+    state = _base_state(intent={"type": "comparison", "entities": [], "complexity": "high"})
+    with patch("app.agent.nodes.planner._get_llm", return_value=mock_llm):
+        result = planner_node(state, query="compare the two papers")
+
+    assert result["plan"][0]["action"] == "retrieve_arxiv"
+    assert result["plan"][0]["params"] == {
+        "query": "voice agent benchmark",
+        "max_results": 5,
+    }
+
+
+def test_planner_node_marks_defaulted_retrieval_query_for_rewrite():
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = MagicMock(content=json.dumps([
+        {
+            "action": "retrieve_local",
+            "params": {"top_k": 4},
+            "reason": "search after rewrite",
+        }
+    ]))
+    state = _base_state(intent={"type": "simple", "entities": [], "complexity": "low"})
+
+    with patch("app.agent.nodes.planner._get_llm", return_value=mock_llm):
+        result = planner_node(state, query="original question")
+
+    assert result["plan"][0]["params"] == {
+        "query": "original question",
+        "top_k": 4,
+        "_query_defaulted": True,
+    }
+
+
 def test_re_planner_sanitizes_structural_steps_and_fills_missing_query():
     mock_llm = MagicMock()
     mock_llm.invoke.return_value = MagicMock(content=json.dumps([

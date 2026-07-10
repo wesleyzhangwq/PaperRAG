@@ -41,6 +41,9 @@ class AgentState(TypedDict, total=False):
     plan: list[StepSpec]
     plan_step_index: int
     retrieval_context: list[Document]
+    retrieved_paper_ids: list[str]
+    synthesis_context_count: int
+    synthesis_context_paper_ids: list[str]
     step_traces: list[StepTrace]
     reflection_count: int
     final_answer: Optional[str]

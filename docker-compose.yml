@@ -44,6 +44,8 @@ services:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-BAAI/bge-m3}
       EMBEDDING_API_BASE: ${EMBEDDING_API_BASE:-https://api.siliconflow.cn/v1}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      RETRIEVAL_K: ${RETRIEVAL_K:-12}
+      HYBRID_ALPHA: ${HYBRID_ALPHA:-0.72}
       CORS_ORIGINS: http://localhost:8080,http://localhost:5173
     ports:
       - "8000:8000"
@@ -71,7 +73,7 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/6333 && printf 'GET /healthz HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && IFS= read -r status <&3 && [[ \"$${status}\" == *\"200\"* ]]"]
       interval: 5s
       timeout: 3s
       retries: 20

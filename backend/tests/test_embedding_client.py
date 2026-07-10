@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock, patch
 
+import requests
+
 from app.db.qdrant import EmbeddingClient
 
 
@@ -56,3 +58,27 @@ def test_dashscope_embedding_endpoint_and_response_shape_still_works():
         "model": "text-embedding-v4",
         "input": {"texts": ["a", "b"]},
     }
+
+
+def test_embedding_client_retries_transient_request_timeout():
+    client = EmbeddingClient(
+        model="BAAI/bge-m3",
+        api_base="https://api.siliconflow.cn/v1",
+        api_key="test-key",
+    )
+    response = MagicMock()
+    response.status_code = 200
+    response.json.return_value = {"data": [{"embedding": [0.1, 0.2]}]}
+
+    with (
+        patch(
+            "app.db.qdrant.requests.post",
+            side_effect=[requests.exceptions.ReadTimeout("timed out"), response],
+        ) as post,
+        patch("app.db.qdrant.time.sleep") as sleep,
+    ):
+        vectors = client.embed_documents(["a"])
+
+    assert vectors == [[0.1, 0.2]]
+    assert post.call_count == 2
+    sleep.assert_called_once()

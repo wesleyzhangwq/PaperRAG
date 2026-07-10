@@ -469,6 +469,20 @@ def _comparison_rows(baseline: dict | None, candidate: dict) -> list[dict]:
     ]
 
 
+def _render_graph_gate_report(gates: dict | None) -> str:
+    if not gates:
+        return ""
+    lines = ["", "## Graph RAG Merge Gates", "", f"- Overall: {'PASS' if gates['passed'] else 'FAIL'}", ""]
+    lines.extend(["| Gate | Baseline | Candidate | Threshold | Pass |", "|---|---:|---:|---:|:---:|"])
+    for check in gates["checks"]:
+        baseline = "n/a" if check.get("baseline") is None else f"{check['baseline']:.4f}"
+        candidate = "n/a" if check.get("candidate") is None else f"{check['candidate']:.4f}"
+        lines.append(
+            f"| {check['name']} | {baseline} | {candidate} | {check['threshold']:.4f} | {'PASS' if check['passed'] else 'FAIL'} |"
+        )
+    return "\n".join(lines) + "\n"
+
+
 def _settings_manifest() -> dict:
     from app.core.config import get_settings
 
@@ -481,6 +495,11 @@ def _settings_manifest() -> dict:
         "hybrid_oversample": settings.hybrid_oversample,
         "hybrid_max_fetch": settings.hybrid_max_fetch,
         "cache_retrieval_enabled": settings.cache_retrieval_enabled,
+        "graph_rag_enabled": settings.graph_rag_enabled,
+        "graph_seed_papers": settings.graph_seed_papers,
+        "graph_max_hops": settings.graph_max_hops,
+        "graph_candidate_limit": settings.graph_candidate_limit,
+        "graph_query_timeout_ms": settings.graph_query_timeout_ms,
         "env_overrides": {
             key: os.environ.get(key)
             for key in (
@@ -503,6 +522,7 @@ def run_pure_rag_eval(
     context_k: int,
     retrieval_top_k: int | None,
     generate: bool,
+    graph_expansion_top_k: int | None = None,
     retriever_name: str = "service",
     lexical_papers: list[dict] | None = None,
     context_strategy: str = "raw",
@@ -510,6 +530,12 @@ def run_pure_rag_eval(
 ) -> list[dict]:
     if retriever_name == "service":
         from app.services.retriever import retrieve
+    elif retriever_name == "service_graph":
+        from app.core.config import get_settings
+        from eval.graph_rag_eval import retrieve_service_graph
+
+        if not get_settings().graph_rag_enabled:
+            raise ValueError("service_graph requires GRAPH_RAG_ENABLED=true")
     elif retriever_name != "lexical_paper":
         raise ValueError(f"Unknown retriever: {retriever_name}")
     elif lexical_papers is None:
@@ -522,8 +548,19 @@ def run_pure_rag_eval(
         print(f"[{idx}/{len(questions)}] {qid}: retrieving ({retriever_name})", file=sys.stderr)
 
         t0 = time.perf_counter()
+        graph_outcome = None
         if retriever_name == "service":
             results = retrieve(query, top_k=retrieval_top_k)
+        elif retriever_name == "service_graph":
+            settings = get_settings()
+            seed_top_k = retrieval_top_k or settings.retrieval_k
+            expansion_top_k = graph_expansion_top_k or seed_top_k
+            graph_outcome = retrieve_service_graph(
+                query,
+                seed_top_k=seed_top_k,
+                expansion_top_k=expansion_top_k,
+            )
+            results = graph_outcome.results
         else:
             results = lexical_paper_retrieve(
                 query,
@@ -552,6 +589,14 @@ def run_pure_rag_eval(
         )
         row["retrieved_chunks"] = chunks
         row["reference_answer"] = item.get("reference_answer", "")
+        if graph_outcome is not None:
+            row.update(
+                {
+                    "graph_expansion_ms": graph_outcome.graph_expansion_ms,
+                    "graph_fallback_reason": graph_outcome.graph_fallback_reason,
+                    "graph_candidate_count": graph_outcome.graph_candidate_count,
+                }
+            )
 
         if generate:
             context = _build_context(chunks, context_k)
@@ -590,10 +635,16 @@ def main() -> int:
     parser.add_argument("--context-k", type=int, default=5)
     parser.add_argument("--retrieval-top-k", type=int, default=None)
     parser.add_argument(
+        "--graph-expansion-top-k",
+        type=int,
+        default=None,
+        help="Qdrant chunk count for the production graph second pass; defaults to --retrieval-top-k.",
+    )
+    parser.add_argument(
         "--retriever",
-        choices=["service", "lexical_paper"],
+        choices=["service", "service_graph", "lexical_paper"],
         default="service",
-        help="Retrieval backend: app service retriever or rough paper-level BM25.",
+        help="Retrieval backend: local service, production Graph RAG path, or rough paper-level BM25.",
     )
     parser.add_argument(
         "--lexical-corpus",
@@ -640,6 +691,11 @@ def main() -> int:
     else:
         questions = load_questions(dataset_path, limit=args.limit)
         print(f"Loaded {len(questions)} valid questions from {dataset_path}", file=sys.stderr)
+        if args.retriever == "service_graph":
+            from eval.graph_rag_eval import require_graph_corpus_coverage
+
+            coverage = require_graph_corpus_coverage(questions)
+            print(f"Graph corpus preflight: {coverage}", file=sys.stderr)
 
     lexical_papers = None
     if args.retriever == "lexical_paper" and not args.from_detail_json:
@@ -655,6 +711,7 @@ def main() -> int:
             context_k=args.context_k,
             retrieval_top_k=args.retrieval_top_k,
             generate=args.generate,
+            graph_expansion_top_k=args.graph_expansion_top_k,
             retriever_name=args.retriever,
             lexical_papers=lexical_papers,
             context_strategy=args.context_strategy,
@@ -668,6 +725,13 @@ def main() -> int:
 
     baseline_summary = _load_baseline_summary(args.compare_summary)
     comparisons = _comparison_rows(baseline_summary, summary)
+    graph_gates = None
+    if args.retriever == "service_graph":
+        from eval.graph_rag_eval import evaluate_graph_merge_gates, summarize_graph_expansion
+
+        summary.update(summarize_graph_expansion(rows))
+        if baseline_summary:
+            graph_gates = evaluate_graph_merge_gates(baseline_summary, summary)
     manifest = {
         "run_id": run_id,
         "started_at": started.isoformat(),
@@ -678,6 +742,7 @@ def main() -> int:
         "k_values": args.k_values,
         "context_k": args.context_k,
         "retrieval_top_k": args.retrieval_top_k,
+        "graph_expansion_top_k": args.graph_expansion_top_k,
         "retriever": args.retriever,
         "lexical_corpus": str(Path(args.lexical_corpus)) if args.retriever == "lexical_paper" else None,
         "context_strategy": args.context_strategy,
@@ -689,22 +754,24 @@ def main() -> int:
     _write_jsonl(run_dir / "per_question.jsonl", rows)
     _write_csv(run_dir / "per_question.csv", rows)
     (run_dir / "summary.json").write_text(
-        json.dumps({"summary": summary, "comparisons": comparisons}, ensure_ascii=False, indent=2),
+        json.dumps(
+            {"summary": summary, "comparisons": comparisons, "graph_gates": graph_gates},
+            ensure_ascii=False,
+            indent=2,
+        ),
         encoding="utf-8",
     )
     (run_dir / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    (run_dir / "report.md").write_text(
-        render_markdown_report(
+    report = render_markdown_report(
             run_id=run_id,
             dataset_name=dataset_path.name,
             summary=summary,
             comparisons=comparisons,
-        ),
-        encoding="utf-8",
-    )
+        ) + _render_graph_gate_report(graph_gates)
+    (run_dir / "report.md").write_text(report, encoding="utf-8")
 
     print(json.dumps(summary, ensure_ascii=False, indent=2), file=sys.stderr)
     print(f"Saved pure RAG eval to {run_dir}", file=sys.stderr)

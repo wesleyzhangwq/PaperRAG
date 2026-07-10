@@ -220,6 +220,42 @@ python ../eval/scripts/ablation.py --all --skip-reingest
 
 注意：negative 问题在纯检索阶段仍会返回 top-k 近邻，不能单独证明“正确拒答”；拒答能力必须通过 `--generate` 或端到端 Agent 评测验证。
 
+### Graph RAG 候选评测
+
+`service_graph` 不实现独立检索逻辑：它严格调用生产 local `retrieve`、`retrieve_graph_context` 和 `evidence_node`。Neo4j 只扩展本地论文 ID，最终回答证据仍由 Qdrant 本地 chunk 二次回捞。
+
+运行前会强制检查评测集的目标论文是否全部存在于 MySQL 图投影源；若 Qdrant 与 MySQL 不是同一语料，runner 会中止而不是把图降级误报为候选结果。
+
+先启动 Neo4j 并同步成功入库的本地论文：
+
+```bash
+GRAPH_RAG_ENABLED=true docker compose up -d --build
+docker compose exec backend python scripts/sync_graph.py --all
+```
+
+使用与当前 Pure RAG 相同的 200 题集进行候选对照：
+
+```bash
+GRAPH_RAG_ENABLED=true \
+PYTHONPATH=.:backend backend/.venv/bin/python eval/run_rag_eval.py \
+  --dataset eval/datasets/questions_v3_200.jsonl \
+  --run-id rag-v3-200-service-graph \
+  --retriever service_graph \
+  --retrieval-top-k 12 --graph-expansion-top-k 12 --context-k 5 \
+  --compare-summary eval/results/rag/rag-v3-200-bge-m3-k12-20260710/summary.json \
+  --generate
+```
+
+候选报告会写入每题图扩展耗时、候选数、降级原因和五项门槛。仅当下列条件同时满足时，Graph RAG 才可合并并启用：
+
+| 门槛 | 要求 |
+|------|------|
+| comparison Recall@5 | 相对传统 Pure RAG 至少 +0.05 |
+| trend_synthesis Recall@5 | 相对传统 Pure RAG 至少 +0.05 |
+| 整体 NDCG@5 | 不低于传统 Pure RAG -0.01 |
+| fixed-context citation support | 1.00 |
+| 图扩展 P95 | 不超过 800ms |
+
 ### 各题型表现
 
 | 类型 | Baseline NDCG@5 | Recall-biased NDCG@5 | Baseline Recall@5 | Recall-biased Recall@5 | 观察 |

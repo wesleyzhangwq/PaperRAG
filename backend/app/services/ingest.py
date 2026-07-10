@@ -125,6 +125,9 @@ def _ingest_one(db: Session, record: dict, force: bool = False) -> tuple[str, st
     paper.num_chunks = len(chunks)
     paper.ingest_status = "ok"
     paper.ingest_error = None
+    paper.graph_sync_status = "pending"
+    paper.graph_synced_at = None
+    paper.graph_sync_error = None
     return paper.paper_id, "ok"
 
 

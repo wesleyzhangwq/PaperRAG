@@ -31,6 +31,18 @@ class Settings(BaseSettings):
     qdrant_api_key: Optional[str] = None
     qdrant_collection: str = "paperrag"
 
+    # --- Graph RAG / Neo4j ---
+    neo4j_uri: Optional[str] = None
+    neo4j_user: str = "neo4j"
+    neo4j_password: Optional[str] = None
+    neo4j_database: str = "neo4j"
+    graph_rag_enabled: bool = False
+    graph_seed_papers: int = 4
+    graph_max_hops: int = 2
+    graph_candidate_limit: int = 12
+    graph_query_timeout_ms: int = 800
+    semantic_scholar_api_key: Optional[str] = None
+
     # --- Cloud LLM (MiniMax) ---
     llm_model: str = "MiniMax-M2.7"
     llm_api_base: str = "https://api.minimax.chat/v1"

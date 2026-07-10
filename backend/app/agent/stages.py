@@ -38,6 +38,7 @@ ACTION_LABELS = {
     # executor tool steps
     "query_rewrite": "优化检索关键词",
     "retrieve_local": "检索本地论文库",
+    "retrieve_graph": "跨论文图谱扩展",
     "retrieve_arxiv": "查询 arXiv 在线",
     "search_web": "查询网络资料",
     "get_paper_detail": "查询论文详情",

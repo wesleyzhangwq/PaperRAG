@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 
 from app.agent.state import AgentState, StepSpec
 from app.agent.nodes.intent import intent_node
-from app.agent.nodes.planner import planner_node, re_planner_node
+from app.agent.nodes.planner import _parse_plan, planner_node, re_planner_node
 
 
 def _base_state(**overrides) -> AgentState:
@@ -119,6 +119,15 @@ def test_planner_node_marks_defaulted_retrieval_query_for_rewrite():
         "top_k": 4,
         "_query_defaulted": True,
     }
+
+
+def test_parse_plan_retains_graph_retrieval_with_a_query():
+    plan = _parse_plan(json.dumps([
+        {"action": "retrieve_graph", "params": {"query": "compare A and B", "top_k": 8}, "reason": "expand"},
+    ]), max_steps=3)
+
+    assert [step["action"] for step in plan] == ["retrieve_graph"]
+    assert plan[0]["params"]["query"] == "compare A and B"
 
 
 def test_re_planner_sanitizes_structural_steps_and_fills_missing_query():

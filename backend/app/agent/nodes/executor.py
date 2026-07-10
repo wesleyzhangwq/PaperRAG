@@ -10,7 +10,9 @@ from sqlalchemy.orm import Session
 from app.agent.stages import ACTION_LABELS
 from app.agent.state import AgentState, StepTrace
 from app.agent.streaming import emit
+from app.core.config import get_settings
 from app.schemas.chat import ChatFilter
+from app.services.graph_retriever import retrieve_graph_context, with_retrieval_metadata
 from app.services.retriever import retrieve
 from app.tools.query_rewrite import rewrite_query
 from app.tools.retrieve_arxiv import retrieve_arxiv_tool
@@ -183,9 +185,12 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
 
     if action == "retrieve_local":
         docs_scores, meta = _run_retrieve_local(params, fallback_query)
-        retrieved_docs = [d for d, _ in docs_scores]
-        retrieved_paper_ids = _append_unique_paper_ids(retrieved_paper_ids, retrieved_docs)
-        new_context, added_count = _append_unique_documents(new_context, retrieved_docs)
+        local_docs = [
+            with_retrieval_metadata(doc, score, source="local")
+            for doc, score in docs_scores
+        ]
+        retrieved_paper_ids = _append_unique_paper_ids(retrieved_paper_ids, local_docs)
+        new_context, added_count = _append_unique_documents(new_context, local_docs)
         output_summary = (
             f"found {len(docs_scores)} chunks"
             + (f", added {added_count} new" if added_count != len(docs_scores) else "")
@@ -216,6 +221,27 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
         }
         if meta["used_fallback"]:
             state_patch["is_fallback"] = True
+
+    elif action == "retrieve_graph":
+        graph_context, report = retrieve_graph_context(
+            query=str(params.get("query") or fallback_query),
+            existing_context=new_context,
+            top_k=int(params.get("top_k") or get_settings().retrieval_k),
+        )
+        retrieved_paper_ids = _append_unique_paper_ids(retrieved_paper_ids, graph_context)
+        new_context, added_count = _append_unique_documents(new_context, graph_context)
+        output_summary = (
+            f"graph: {len(report.candidates)} candidate papers, {added_count} chunks added"
+            if report.fallback_reason is None
+            else f"graph fallback: {report.fallback_reason}"
+        )
+        output_detail = {
+            "seed_paper_ids": list(report.seed_paper_ids),
+            "candidate_paper_ids": [candidate.paper_id for candidate in report.candidates],
+            "added": added_count,
+            "fallback_reason": report.fallback_reason,
+            "graph_elapsed_ms": report.graph_elapsed_ms,
+        }
 
     elif action == "retrieve_arxiv":
         try:
@@ -300,10 +326,15 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
         reason=trace_reason,
         detail=output_detail,
     )
+    stage_status = "warning" if (
+        output_detail.get("error")
+        or output_detail.get("fallback_reason")
+        or output_summary.startswith("unknown")
+    ) else "done"
     emit("stage", {
         "id": f"step:{idx}",
         "stage": "retrieve_step",
-        "status": "warning" if output_detail.get("error") or output_summary.startswith("unknown") else "done",
+        "status": stage_status,
         "title": ACTION_LABELS.get(action, action),
         "summary": output_summary,
         "detail": {"action": action, "params": trace_params, "result": output_detail},

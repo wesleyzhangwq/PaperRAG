@@ -21,9 +21,9 @@ from app.utils.llm_json import extract_json
 # graph-level stages now and must never reach the executor.
 EXECUTABLE_ACTIONS = {
     "query_rewrite", "retrieve_local", "retrieve_arxiv", "search_web",
-    "get_paper_detail", "get_paper_chunks",
+    "retrieve_graph", "get_paper_detail", "get_paper_chunks",
 }
-QUERY_ACTIONS = {"retrieve_local", "retrieve_arxiv", "search_web"}
+QUERY_ACTIONS = {"retrieve_local", "retrieve_arxiv", "search_web", "retrieve_graph"}
 
 
 def _get_llm() -> ChatOpenAI:
@@ -114,10 +114,12 @@ def _sanitize_supplementary_steps(
         if action not in EXECUTABLE_ACTIONS:
             continue
         params = dict(step.get("params") or {})
-        if action in {"retrieve_local", "retrieve_arxiv", "search_web"}:
+        if action in QUERY_ACTIONS:
             text = str(params.get("query") or "").strip() or fallback
             params["query"] = text
             if action == "retrieve_local":
+                params["top_k"] = params.get("top_k") or 4
+            if action == "retrieve_graph":
                 params["top_k"] = params.get("top_k") or 4
             if action == "search_web":
                 params["max_results"] = params.get("max_results") or 3

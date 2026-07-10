@@ -18,7 +18,9 @@ from app.agent.stages import emit_plan, stage
 from app.agent.state import AgentState, StepSpec, StepTrace
 from app.core.config import get_settings
 
-_RETRIEVAL_ACTIONS = {"retrieve_local", "retrieve_arxiv", "search_web"}
+_BASE_RETRIEVAL_ACTIONS = {"retrieve_local", "retrieve_arxiv", "search_web"}
+_RETRIEVAL_ACTIONS = _BASE_RETRIEVAL_ACTIONS | {"retrieve_graph"}
+_GRAPH_ELIGIBLE_INTENTS = {"comparison", "trend_synthesis"}
 
 _RECENCY_RE = re.compile(
     r"(最新|最近|新进展|前沿|今年|去年|这两年|state[- ]of[- ]the[- ]art|sota|latest|recent|2024|2025|2026)",
@@ -29,7 +31,45 @@ _SOURCE_LABELS = {
     "retrieve_local": "本地论文库",
     "retrieve_arxiv": "arXiv 在线",
     "search_web": "网络搜索",
+    "retrieve_graph": "图谱关系",
 }
+
+
+def _normalize_graph_step(
+    plan: list[StepSpec],
+    *,
+    query: str,
+    enabled: bool,
+    intent_type: str,
+    top_k: int,
+) -> tuple[list[StepSpec], list[str]]:
+    """Keep at most one graph action, only after local seed retrieval.
+
+    The graph action is a policy decision rather than a planner choice: this
+    avoids graph calls for simple questions and ensures it has local seeds.
+    """
+    without_graph = [step for step in plan if step["action"] != "retrieve_graph"]
+    had_graph = len(without_graph) != len(plan)
+    if not enabled or intent_type not in _GRAPH_ELIGIBLE_INTENTS:
+        return without_graph, ["dropped_graph_retrieval"] if had_graph else []
+
+    local_indexes = [
+        index for index, step in enumerate(without_graph)
+        if step["action"] == "retrieve_local"
+    ]
+    if not local_indexes:
+        return without_graph, ["dropped_graph_retrieval_no_local_seed"] if had_graph else []
+
+    insert_at = local_indexes[-1] + 1
+    graph_step = StepSpec(
+        action="retrieve_graph",
+        params={"query": query, "top_k": top_k},
+        reason="路由策略：跨论文问题在本地命中后扩展可验证关系",
+    )
+    return (
+        without_graph[:insert_at] + [graph_step] + without_graph[insert_at:],
+        ["injected_graph_retrieval"],
+    )
 
 
 def route_node(state: AgentState, *, query: str) -> dict:
@@ -41,7 +81,7 @@ def route_node(state: AgentState, *, query: str) -> dict:
         settings = get_settings()
 
         used_actions = {step["action"] for step in plan}
-        retrieval_steps = [p for p in plan if p["action"] in _RETRIEVAL_ACTIONS]
+        retrieval_steps = [p for p in plan if p["action"] in _BASE_RETRIEVAL_ACTIONS]
 
         # Policy 1: never run the pipeline without at least one retrieval source.
         if not retrieval_steps:
@@ -57,7 +97,7 @@ def route_node(state: AgentState, *, query: str) -> dict:
         needs_recency = bool(_RECENCY_RE.search(query or ""))
         if needs_recency and "retrieve_arxiv" not in used_actions and "search_web" not in used_actions:
             insert_at = next(
-                (i + 1 for i in range(len(plan) - 1, -1, -1) if plan[i]["action"] in _RETRIEVAL_ACTIONS),
+                (i + 1 for i in range(len(plan) - 1, -1, -1) if plan[i]["action"] in _BASE_RETRIEVAL_ACTIONS),
                 len(plan),
             )
             plan.insert(insert_at, StepSpec(
@@ -75,7 +115,19 @@ def route_node(state: AgentState, *, query: str) -> dict:
             used_actions.discard("search_web")
             adjustments.append("dropped_search_web_unconfigured")
 
-        sources = [a for a in ("retrieve_local", "retrieve_arxiv", "search_web") if a in {p["action"] for p in plan}]
+        plan, graph_adjustments = _normalize_graph_step(
+            plan,
+            query=query,
+            enabled=settings.graph_rag_enabled,
+            intent_type=(state.get("intent") or {}).get("type", ""),
+            top_k=settings.retrieval_k,
+        )
+        adjustments.extend(graph_adjustments)
+
+        sources = [
+            action for action in ("retrieve_local", "retrieve_arxiv", "search_web", "retrieve_graph")
+            if action in {step["action"] for step in plan}
+        ]
         route_decision = {
             "sources": sources,
             "source_labels": [_SOURCE_LABELS[s_] for s_ in sources],

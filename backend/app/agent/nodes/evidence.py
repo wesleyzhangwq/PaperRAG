@@ -26,7 +26,7 @@ CONTEXT_CHAR_BUDGET = 14000
 
 
 def _score(doc: Document) -> float | None:
-    raw = (doc.metadata or {}).get("score")
+    raw = (doc.metadata or {}).get("retrieval_score", (doc.metadata or {}).get("score"))
     try:
         return float(raw) if raw is not None else None
     except (TypeError, ValueError):

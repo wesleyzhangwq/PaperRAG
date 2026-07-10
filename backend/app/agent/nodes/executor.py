@@ -89,6 +89,17 @@ def _append_unique_documents(existing: list[Document], incoming: list[Document])
     return out, added
 
 
+def _append_unique_paper_ids(existing: list[str], incoming: list[Document]) -> list[str]:
+    out = list(existing)
+    seen = set(out)
+    for doc in incoming:
+        paper_id = str((doc.metadata or {}).get("paper_id") or "").strip()
+        if paper_id and paper_id not in seen:
+            out.append(paper_id)
+            seen.add(paper_id)
+    return out
+
+
 def _run_query_rewrite(params: dict, intent: dict, fallback_query: str) -> list[str]:
     original = (params.get("original_query") or "").strip() or fallback_query
     return rewrite_query(original, intent)
@@ -163,6 +174,7 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
 
     t0 = time.perf_counter()
     new_context = list(state.get("retrieval_context", []))
+    retrieved_paper_ids = list(state.get("retrieved_paper_ids", []))
     output_summary = ""
     output_detail: dict = {}
     state_patch: dict = {}
@@ -171,7 +183,9 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
 
     if action == "retrieve_local":
         docs_scores, meta = _run_retrieve_local(params, fallback_query)
-        new_context, added_count = _append_unique_documents(new_context, [d for d, _ in docs_scores])
+        retrieved_docs = [d for d, _ in docs_scores]
+        retrieved_paper_ids = _append_unique_paper_ids(retrieved_paper_ids, retrieved_docs)
+        new_context, added_count = _append_unique_documents(new_context, retrieved_docs)
         output_summary = (
             f"found {len(docs_scores)} chunks"
             + (f", added {added_count} new" if added_count != len(docs_scores) else "")
@@ -204,19 +218,32 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
             state_patch["is_fallback"] = True
 
     elif action == "retrieve_arxiv":
-        result = retrieve_arxiv_tool.invoke(params)
-        arxiv_docs = _parse_arxiv_to_documents(result)
-        new_context, added_count = _append_unique_documents(new_context, arxiv_docs)
-        output_summary = f"arXiv: {len(arxiv_docs)} papers added"
-        output_detail = {
-            "papers": [
-                {"paper_id": (d.metadata or {}).get("paper_id", ""),
-                 "title": (d.metadata or {}).get("title", "")[:120]}
-                for d in arxiv_docs[:5]
-            ],
-            "total": len(arxiv_docs),
-            "added": added_count,
-        }
+        try:
+            result = retrieve_arxiv_tool.invoke(params)
+        except Exception as exc:
+            arxiv_docs = []
+            added_count = 0
+            output_summary = "arXiv unavailable"
+            output_detail = {
+                "papers": [],
+                "total": 0,
+                "added": 0,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        else:
+            arxiv_docs = _parse_arxiv_to_documents(result)
+            retrieved_paper_ids = _append_unique_paper_ids(retrieved_paper_ids, arxiv_docs)
+            new_context, added_count = _append_unique_documents(new_context, arxiv_docs)
+            output_summary = f"arXiv: {len(arxiv_docs)} papers added"
+            output_detail = {
+                "papers": [
+                    {"paper_id": (d.metadata or {}).get("paper_id", ""),
+                     "title": (d.metadata or {}).get("title", "")[:120]}
+                    for d in arxiv_docs[:5]
+                ],
+                "total": len(arxiv_docs),
+                "added": added_count,
+            }
 
     elif action == "search_web":
         result = search_web_tool.invoke(params)
@@ -242,9 +269,12 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
         # Inject rewritten queries into subsequent retrieve_local steps
         remaining_plan = list(state["plan"][idx + 1:])
         for plan_step in remaining_plan:
-            if plan_step["action"] == "retrieve_local" and not plan_step["params"].get("query"):
-                if queries:
-                    plan_step["params"] = {**plan_step["params"], "query": queries.pop(0)}
+            if plan_step["action"] == "retrieve_local":
+                next_params = dict(plan_step["params"])
+                was_defaulted = bool(next_params.pop("_query_defaulted", False))
+                if queries and (was_defaulted or not next_params.get("query")):
+                    next_params["query"] = queries.pop(0)
+                plan_step["params"] = next_params
 
     elif action == "get_paper_detail":
         result = get_paper_detail(db, params.get("paper_id", ""))
@@ -283,6 +313,7 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
     result: dict = {
         "plan_step_index": idx + 1,
         "retrieval_context": new_context,
+        "retrieved_paper_ids": retrieved_paper_ids,
         "step_traces": state["step_traces"] + [trace],
     }
     result.update(state_patch)

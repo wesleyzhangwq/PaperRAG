@@ -57,9 +57,14 @@ def _get_llm(*, streaming: bool = False) -> ChatOpenAI:
     )
 
 
-def _format_context(state: AgentState) -> str:
+def _synthesis_documents(state: AgentState) -> list:
+    limit = max(1, int(get_settings().final_context_k))
+    return list(state.get("retrieval_context") or [])[:limit]
+
+
+def _format_context(documents: list) -> str:
     parts = []
-    for d in state["retrieval_context"]:
+    for d in documents:
         md = d.metadata or {}
         source_tag = md.get("source", "local")
         if source_tag == "arxiv_api":
@@ -83,7 +88,8 @@ def synthesis_node(state: AgentState, *, query: str, issues: list[str] | None = 
     with stage("synthesis", stage_id=f"synthesis:{attempt}" if attempt > 1 else "synthesis",
                title="生成回答" if attempt == 1 else "重新生成回答") as s:
         llm = _get_llm(streaming=True)
-        context = _format_context(state)
+        context_docs = _synthesis_documents(state)
+        context = _format_context(context_docs)
 
         if issues:
             prompt = SYNTHESIS_WITH_ISSUES_PROMPT.format(
@@ -117,7 +123,7 @@ def synthesis_node(state: AgentState, *, query: str, issues: list[str] | None = 
     trace = StepTrace(
         node="synthesis_node",
         action="reasoning_synthesis",
-        input_summary=f"{len(state['retrieval_context'])} chunks as context",
+        input_summary=f"{len(context_docs)} chunks as context",
         output_summary=f"generated {len(answer)} chars" + (
             f" (+{sum(len(r) for r in reasoning_chunks)} reasoning chars)" if reasoning_chunks else ""
         ),
@@ -125,5 +131,11 @@ def synthesis_node(state: AgentState, *, query: str, issues: list[str] | None = 
     )
     return {
         "final_answer": answer,
+        "synthesis_context_count": len(context_docs),
+        "synthesis_context_paper_ids": [
+            str((doc.metadata or {}).get("paper_id") or "").strip()
+            for doc in context_docs
+            if str((doc.metadata or {}).get("paper_id") or "").strip()
+        ],
         "step_traces": state["step_traces"] + [trace],
     }

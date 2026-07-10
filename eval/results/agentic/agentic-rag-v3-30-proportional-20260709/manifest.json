@@ -1,0 +1,215 @@
+{
+  "run_id": "agentic-rag-v3-30-proportional-20260709",
+  "started_at": "2026-07-09T11:32:53.003687+00:00",
+  "finished_at": "2026-07-09T12:45:41.252640+00:00",
+  "dataset": "/Users/wesz_station/Projects/PaperRAG/eval/datasets/questions_v3_200.jsonl",
+  "question_count": 30,
+  "selection": {
+    "source_count": 200,
+    "sample_size": 30,
+    "per_type": null,
+    "limit": null
+  },
+  "traditional": {
+    "retriever": "service",
+    "context_k": 5,
+    "retrieval_top_k": null,
+    "context_strategy": "raw",
+    "mmr_lambda": 0.65
+  },
+  "agentic": {
+    "entrypoint": "app.agent.graph.run_agent_sync",
+    "retrieval_actions": [
+      "get_paper_chunks",
+      "get_paper_detail",
+      "retrieve_arxiv",
+      "retrieve_local",
+      "search_web"
+    ]
+  },
+  "settings": {
+    "llm_model": "MiniMax-M3",
+    "embedding_model": "BAAI/bge-m3",
+    "retrieval_k": 12,
+    "final_context_k": 3,
+    "hybrid_retrieval_enabled": true,
+    "hybrid_alpha": 0.3,
+    "hybrid_oversample": 2.5,
+    "hybrid_max_fetch": 64,
+    "cache_retrieval_enabled": true,
+    "agent_max_plan_steps": 7,
+    "agent_max_reflections": 2,
+    "agent_checkpoint_enabled": true,
+    "tavily_web_search_configured": true
+  },
+  "repairs": [
+    {
+      "started_at": "2026-07-09T18:26:47.607850+00:00",
+      "finished_at": "2026-07-09T18:43:50.372581+00:00",
+      "max_attempts": 3,
+      "sleep_seconds": 8.0,
+      "elapsed_initial_s": 3171.3833,
+      "elapsed_s": 1022.8102,
+      "backups": [
+        "traditional_per_question.jsonl.before-repair-20260709T182647Z",
+        "traditional_per_question.csv.before-repair-20260709T182647Z",
+        "agentic_per_question.jsonl.before-repair-20260709T182647Z",
+        "agentic_per_question.csv.before-repair-20260709T182647Z",
+        "paired_per_question.jsonl.before-repair-20260709T182647Z",
+        "paired_per_question.csv.before-repair-20260709T182647Z",
+        "summary.json.before-repair-20260709T182647Z",
+        "manifest.json.before-repair-20260709T182647Z",
+        "report.md.before-repair-20260709T182647Z"
+      ],
+      "traditional_rag": [
+        {
+          "qid": "c009",
+          "attempts": 1,
+          "recovered": true,
+          "final_error": null
+        },
+        {
+          "qid": "m001",
+          "attempts": 1,
+          "recovered": true,
+          "final_error": null
+        },
+        {
+          "qid": "m002",
+          "attempts": 1,
+          "recovered": true,
+          "final_error": null
+        }
+      ],
+      "agentic_rag": [
+        {
+          "qid": "x003",
+          "attempts": 1,
+          "recovered": true,
+          "final_error": null
+        },
+        {
+          "qid": "x004",
+          "attempts": 1,
+          "recovered": true,
+          "final_error": null
+        },
+        {
+          "qid": "t001",
+          "attempts": 1,
+          "recovered": true,
+          "final_error": null
+        },
+        {
+          "qid": "t002",
+          "attempts": 1,
+          "recovered": true,
+          "final_error": null
+        },
+        {
+          "qid": "t003",
+          "attempts": 1,
+          "recovered": true,
+          "final_error": null
+        },
+        {
+          "qid": "n001",
+          "attempts": 1,
+          "recovered": true,
+          "final_error": null
+        },
+        {
+          "qid": "n002",
+          "attempts": 1,
+          "recovered": true,
+          "final_error": null
+        },
+        {
+          "qid": "n003",
+          "attempts": 1,
+          "recovered": true,
+          "final_error": null
+        }
+      ],
+      "remaining_errors": {
+        "traditional_rag": 0,
+        "agentic_rag": 0
+      }
+    },
+    {
+      "started_at": "2026-07-09T18:47:35.788590+00:00",
+      "finished_at": "2026-07-09T18:47:35.790280+00:00",
+      "max_attempts": 1,
+      "sleep_seconds": 0.0,
+      "elapsed_initial_s": 4194.1935,
+      "elapsed_s": 0.0,
+      "backups": [
+        "traditional_per_question.jsonl.before-repair-20260709T184735Z",
+        "traditional_per_question.csv.before-repair-20260709T184735Z",
+        "agentic_per_question.jsonl.before-repair-20260709T184735Z",
+        "agentic_per_question.csv.before-repair-20260709T184735Z",
+        "paired_per_question.jsonl.before-repair-20260709T184735Z",
+        "paired_per_question.csv.before-repair-20260709T184735Z",
+        "summary.json.before-repair-20260709T184735Z",
+        "manifest.json.before-repair-20260709T184735Z",
+        "report.md.before-repair-20260709T184735Z"
+      ],
+      "traditional_rag": [],
+      "agentic_rag": [],
+      "remaining_errors": {
+        "traditional_rag": 0,
+        "agentic_rag": 0
+      }
+    },
+    {
+      "started_at": "2026-07-09T18:49:20.922917+00:00",
+      "finished_at": "2026-07-09T18:49:20.925130+00:00",
+      "max_attempts": 1,
+      "sleep_seconds": 0.0,
+      "elapsed_initial_s": 4194.1935,
+      "elapsed_s": 0.0,
+      "backups": [
+        "traditional_per_question.jsonl.before-repair-20260709T184920Z",
+        "traditional_per_question.csv.before-repair-20260709T184920Z",
+        "agentic_per_question.jsonl.before-repair-20260709T184920Z",
+        "agentic_per_question.csv.before-repair-20260709T184920Z",
+        "paired_per_question.jsonl.before-repair-20260709T184920Z",
+        "paired_per_question.csv.before-repair-20260709T184920Z",
+        "summary.json.before-repair-20260709T184920Z",
+        "manifest.json.before-repair-20260709T184920Z",
+        "report.md.before-repair-20260709T184920Z"
+      ],
+      "traditional_rag": [],
+      "agentic_rag": [],
+      "remaining_errors": {
+        "traditional_rag": 0,
+        "agentic_rag": 0
+      }
+    },
+    {
+      "started_at": "2026-07-09T18:51:53.272621+00:00",
+      "finished_at": "2026-07-09T18:51:53.274860+00:00",
+      "max_attempts": 1,
+      "sleep_seconds": 0.0,
+      "elapsed_initial_s": 4194.1935,
+      "elapsed_s": 0.0,
+      "backups": [
+        "traditional_per_question.jsonl.before-repair-20260709T185153Z",
+        "traditional_per_question.csv.before-repair-20260709T185153Z",
+        "agentic_per_question.jsonl.before-repair-20260709T185153Z",
+        "agentic_per_question.csv.before-repair-20260709T185153Z",
+        "paired_per_question.jsonl.before-repair-20260709T185153Z",
+        "paired_per_question.csv.before-repair-20260709T185153Z",
+        "summary.json.before-repair-20260709T185153Z",
+        "manifest.json.before-repair-20260709T185153Z",
+        "report.md.before-repair-20260709T185153Z"
+      ],
+      "traditional_rag": [],
+      "agentic_rag": [],
+      "remaining_errors": {
+        "traditional_rag": 0,
+        "agentic_rag": 0
+      }
+    }
+  ]
+}

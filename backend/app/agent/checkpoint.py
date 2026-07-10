@@ -12,7 +12,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from app.core.config import get_settings
 
 
-def agent_run_config(thread_id: str, *, recursion_limit: int = 25) -> dict:
+def agent_run_config(thread_id: str, *, recursion_limit: int = 60) -> dict:
     """Build the LangGraph run config shared by sync and streaming paths."""
     return {
         "recursion_limit": recursion_limit,

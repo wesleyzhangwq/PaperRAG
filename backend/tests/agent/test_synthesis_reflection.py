@@ -1,4 +1,5 @@
 """Test synthesis, groundedness, and citation_gate nodes."""
+from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 from langchain_core.documents import Document
 
@@ -37,6 +38,32 @@ def test_synthesis_generates_answer():
 
     assert "1706.03762" in result["final_answer"]
     assert len(result["step_traces"]) == 1
+
+
+def test_synthesis_limits_context_to_final_context_k():
+    mock_llm = MagicMock()
+    mock_llm.stream.return_value = [MagicMock(content="answer")]
+    state = _base_state(
+        retrieval_context=[
+            Document(page_content="first context", metadata={"paper_id": "p1"}),
+            Document(page_content="second context", metadata={"paper_id": "p2"}),
+        ]
+    )
+
+    with (
+        patch("app.agent.nodes.synthesis._get_llm", return_value=mock_llm),
+        patch(
+            "app.agent.nodes.synthesis.get_settings",
+            return_value=SimpleNamespace(final_context_k=1),
+        ),
+    ):
+        result = synthesis_node(state, query="test")
+
+    prompt = mock_llm.stream.call_args.args[0]
+    assert "first context" in prompt
+    assert "second context" not in prompt
+    assert result["synthesis_context_count"] == 1
+    assert result["synthesis_context_paper_ids"] == ["p1"]
 
 
 def test_synthesis_emits_answer_start_before_tokens():

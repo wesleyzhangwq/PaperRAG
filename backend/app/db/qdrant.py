@@ -59,9 +59,15 @@ class EmbeddingClient:
         attempts = max(1, cfg.http_retry_max_attempts)
         resp: Optional[requests.Response] = None
         for attempt in range(attempts):
-            resp = requests.post(
-                self.endpoint, headers=headers, json=payload, timeout=60
-            )
+            try:
+                resp = requests.post(
+                    self.endpoint, headers=headers, json=payload, timeout=60
+                )
+            except requests.RequestException:
+                if attempt >= attempts - 1:
+                    raise
+                time.sleep(cfg.http_retry_backoff_base_sec * (2**attempt))
+                continue
             if resp.status_code < 400:
                 return resp
             if (
@@ -210,6 +216,9 @@ class QdrantVectorStore:
     def _ensure_collection(self) -> None:
         collections = self._client.get_collections().collections
         if any(c.name == self._collection_name for c in collections):
+            return
+        aliases = self._client.get_aliases().aliases
+        if any(alias.alias_name == self._collection_name for alias in aliases):
             return
         vector_size = len(self._embedding.embed_query("dimension probe"))
         self._client.create_collection(

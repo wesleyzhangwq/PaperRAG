@@ -15,7 +15,7 @@ class CounterState(TypedDict):
 def test_agent_run_config_uses_conversation_id_as_thread_id():
     config = agent_run_config("conv-123")
 
-    assert config["recursion_limit"] == 25
+    assert config["recursion_limit"] == 60
     assert config["configurable"]["thread_id"] == "conv-123"
 
 

@@ -197,6 +197,9 @@ def initial_agent_state(messages: list) -> AgentState:
         "plan": [],
         "plan_step_index": 0,
         "retrieval_context": [],
+        "retrieved_paper_ids": [],
+        "synthesis_context_count": 0,
+        "synthesis_context_paper_ids": [],
         "step_traces": [],
         "reflection_count": 0,
         "sufficiency_round": 0,
@@ -212,17 +215,13 @@ def initial_agent_state(messages: list) -> AgentState:
     }
 
 
-def run_agent_sync(
+def _run_agent_to_state(
     db: Session,
     query: str,
     session_id: str = "",
     history: list | None = None,
-) -> ChatResponse:
-    """Run the agent synchronously, return ChatResponse.
-
-    `history` may be either a list of LangChain message objects (preferred)
-    or a list of (role, content) tuples (legacy).
-    """
+) -> dict:
+    """Run the graph synchronously and return its final internal state."""
     thread_id = session_id or "default"
 
     messages = []
@@ -242,7 +241,10 @@ def run_agent_sync(
     config = agent_run_config(thread_id)
     with open_sync_checkpointer() as checkpointer:
         graph = build_agent_graph(db, checkpointer=checkpointer)
-        result = graph.invoke(initial_state, config=config)
+        return graph.invoke(initial_state, config=config)
+
+
+def _response_from_state(result: dict) -> ChatResponse:
 
     answer = result.get("final_answer", "Agent failed to produce an answer.")
     sources = result.get("sources", [])
@@ -251,7 +253,53 @@ def run_agent_sync(
     return ChatResponse(
         answer=answer,
         sources=sources if isinstance(sources, list) else [],
-        used_chunks=len(result.get("retrieval_context", [])),
+        used_chunks=int(
+            result.get("synthesis_context_count", len(result.get("retrieval_context", [])))
+        ),
         step_traces=step_traces,
         reflection_result=result.get("reflection_result"),
     )
+
+
+def _unique_paper_ids(items: list) -> list[str]:
+    paper_ids: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        value = str(item or "").strip()
+        if value and value not in seen:
+            paper_ids.append(value)
+            seen.add(value)
+    return paper_ids
+
+
+def run_agent_sync(
+    db: Session,
+    query: str,
+    session_id: str = "",
+    history: list | None = None,
+) -> ChatResponse:
+    """Run the agent synchronously, return the public ChatResponse.
+
+    `history` may be either a list of LangChain message objects (preferred)
+    or a list of (role, content) tuples (legacy).
+    """
+    return _response_from_state(_run_agent_to_state(db, query, session_id, history))
+
+
+def run_agent_eval_sync(
+    db: Session,
+    query: str,
+    session_id: str = "",
+    history: list | None = None,
+) -> tuple[ChatResponse, list[str], list[str]]:
+    """Run the agent and expose retrieval evidence for offline evaluation only."""
+    result = _run_agent_to_state(db, query, session_id, history)
+    retrieved_paper_ids = _unique_paper_ids(result.get("retrieved_paper_ids") or [])
+    context_values = result.get("synthesis_context_paper_ids")
+    if context_values is None:
+        context_values = [
+            (document.metadata or {}).get("paper_id")
+            for document in result.get("retrieval_context") or []
+        ]
+    context_paper_ids = _unique_paper_ids(context_values)
+    return _response_from_state(result), retrieved_paper_ids, context_paper_ids

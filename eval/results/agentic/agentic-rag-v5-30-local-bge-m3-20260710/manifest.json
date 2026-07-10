@@ -1,0 +1,46 @@
+{
+  "run_id": "agentic-rag-v5-30-local-bge-m3-20260710",
+  "started_at": "2026-07-10T07:41:16.630125+00:00",
+  "finished_at": "2026-07-10T09:16:38.331416+00:00",
+  "dataset": "eval/datasets/questions_v3_200.jsonl",
+  "question_count": 30,
+  "selection": {
+    "source_count": 200,
+    "sample_size": 30,
+    "per_type": null,
+    "limit": null
+  },
+  "traditional": {
+    "retriever": "service",
+    "context_k": 5,
+    "retrieval_top_k": 12,
+    "context_strategy": "raw",
+    "mmr_lambda": 0.65
+  },
+  "agentic": {
+    "entrypoint": "app.agent.graph.run_agent_eval_sync",
+    "retrieval_actions": [
+      "get_paper_chunks",
+      "get_paper_detail",
+      "retrieve_arxiv",
+      "retrieve_local",
+      "search_web"
+    ],
+    "local_only": true
+  },
+  "settings": {
+    "llm_model": "MiniMax-M3",
+    "embedding_model": "BAAI/bge-m3",
+    "retrieval_k": 12,
+    "final_context_k": 3,
+    "hybrid_retrieval_enabled": true,
+    "hybrid_alpha": 0.72,
+    "hybrid_oversample": 2.5,
+    "hybrid_max_fetch": 64,
+    "cache_retrieval_enabled": true,
+    "agent_max_plan_steps": 7,
+    "agent_max_reflections": 2,
+    "agent_checkpoint_enabled": true,
+    "tavily_web_search_configured": true
+  }
+}

@@ -23,6 +23,7 @@ EXECUTABLE_ACTIONS = {
     "query_rewrite", "retrieve_local", "retrieve_arxiv", "search_web",
     "get_paper_detail", "get_paper_chunks",
 }
+QUERY_ACTIONS = {"retrieve_local", "retrieve_arxiv", "search_web"}
 
 
 def _get_llm() -> ChatOpenAI:
@@ -37,13 +38,46 @@ def _get_llm() -> ChatOpenAI:
     )
 
 
-def _parse_plan(content: str, max_steps: int) -> list[StepSpec]:
+def _first_query(params: dict) -> str:
+    query = str(params.get("query") or "").strip()
+    if query:
+        return query
+    queries = params.get("queries")
+    if isinstance(queries, list):
+        for item in queries:
+            text = str(item or "").strip()
+            if text:
+                return text
+    if isinstance(queries, str):
+        return queries.strip()
+    return ""
+
+
+def _normalize_params(action: str, params: dict, default_query: str) -> dict:
+    cleaned = dict(params or {})
+    if action in QUERY_ACTIONS:
+        supplied_query = _first_query(cleaned)
+        query = supplied_query or default_query
+        cleaned.pop("queries", None)
+        cleaned["query"] = query
+        if supplied_query:
+            cleaned.pop("_query_defaulted", None)
+        else:
+            cleaned["_query_defaulted"] = True
+        if action == "retrieve_local":
+            cleaned["top_k"] = cleaned.get("top_k") or 8
+        elif action in {"retrieve_arxiv", "search_web"}:
+            cleaned["max_results"] = cleaned.get("max_results") or 5
+    return cleaned
+
+
+def _parse_plan(content: str, max_steps: int, *, default_query: str = "") -> list[StepSpec]:
     steps = extract_json(content)
     if isinstance(steps, list):
         parsed = [
             StepSpec(
                 action=s.get("action", ""),
-                params=s.get("params", {}),
+                params=_normalize_params(s.get("action", ""), s.get("params", {}), default_query),
                 reason=s.get("reason", ""),
             )
             for s in steps
@@ -120,7 +154,11 @@ def planner_node(state: AgentState, *, query: str) -> dict:
             max_steps=settings.agent_max_plan_steps,
         )
         response = llm.invoke(prompt)
-        plan = _parse_plan(response.content, settings.agent_max_plan_steps)
+        plan = _parse_plan(
+            response.content,
+            settings.agent_max_plan_steps,
+            default_query=query,
+        )
         emit_plan(plan, revision=0)
         s.done(f"{len(plan)} 个检索步骤", detail={"steps": [p["action"] for p in plan]})
 
@@ -153,7 +191,11 @@ def re_planner_node(state: AgentState, *, query: str, issues: list[str], missing
             missing_aspects=json.dumps(missing_aspects, ensure_ascii=False),
         )
         response = llm.invoke(prompt)
-        raw_steps = _parse_plan(response.content, 3)
+        raw_steps = _parse_plan(
+            response.content,
+            3,
+            default_query=_supplement_query(query, issues, missing_aspects),
+        )
         new_steps = _sanitize_supplementary_steps(
             raw_steps,
             query=query,

@@ -6,6 +6,7 @@ PLANNER_PROMPT = """你是一个学术RAG系统的检索规划器。根据用户
 可用动作（只规划检索与资料获取，充分性评估和答案生成由系统自动执行，不要规划）：
 - query_rewrite: 改写/分解查询（适合复杂或对比类问题）
 - retrieve_local: 从本地论文库检索（主要检索手段）
+- retrieve_graph: 基于已命中的本地论文沿引用、作者和类别关系扩展（只适合跨论文比较或趋势问题；必须在 retrieve_local 之后）
 - retrieve_arxiv: 从 arXiv 实时搜索（本地不够时补充）
 - search_web: 网页搜索（需要背景知识时）
 - get_paper_detail: 查询指定论文的元数据（已知 paper_id 时）

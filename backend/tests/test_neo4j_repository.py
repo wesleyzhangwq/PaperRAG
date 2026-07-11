@@ -1,5 +1,22 @@
 from unittest.mock import MagicMock
 
+
+def test_prune_orphans_removes_only_disconnected_external_projection_nodes() -> None:
+    from app.db.neo4j import Neo4jGraphRepository
+
+    driver = MagicMock()
+    session = driver.session.return_value.__enter__.return_value
+    repo = Neo4jGraphRepository(driver=driver, database="neo4j", timeout_ms=800)
+
+    repo.prune_orphans()
+
+    statements = [call.args[0] for call in session.run.call_args_list]
+    assert len(statements) == 3
+    assert "in_corpus: false" in statements[0]
+    assert "NOT (node)--()" in statements[0]
+    assert "MATCH (node:Author)" in statements[1]
+    assert "MATCH (node:Category)" in statements[2]
+
 def test_expand_local_papers_returns_only_distinct_local_candidates() -> None:
     from app.db.neo4j import Neo4jGraphRepository
 

@@ -44,7 +44,11 @@ def require_graph_corpus_coverage(
             ready_paper_ids = {
                 str(paper_id)
                 for (paper_id,) in db.query(Paper.paper_id)
-                .filter(Paper.ingest_status == "ok", Paper.num_chunks > 0)
+                .filter(
+                    Paper.ingest_status == "ok",
+                    Paper.num_chunks > 0,
+                    Paper.graph_sync_status.in_(("ok", "unresolved")),
+                )
                 .all()
             }
         finally:

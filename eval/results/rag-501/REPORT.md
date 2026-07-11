@@ -70,4 +70,7 @@ Hybrid fusion helps fact extraction and multi-paper comparison most, but slightl
 - Built an evidence-backed pure-RAG benchmark over 501 papers and 54,467 chunks, with 50 development and 200 paper-disjoint frozen test questions.
 - Tuned candidate expansion, BM25/vector fusion, and paper-level context deduplication against a credible bge-m3 dense-only baseline.
 - On the frozen test set, improved Hit@5 from 82.22% to 85.00%, Recall@5 from 73.70% to 75.31%, and context precision from 21.92% to 24.07% (+9.84% relative), while P90 retrieval latency rose from 0.390s to 0.418s.
-- Do not claim Graph RAG gains until Neo4j citation edges are populated and a separately frozen Graph RAG run passes its acceptance gates.
+- Neo4j citation edges were subsequently populated and evaluated. The +Graph
+  candidate did not improve comparison/trend recall and reduced NDCG@5 from
+  0.7063 to 0.7012, so Graph RAG remains disabled and is not a resume claim.
+  See `docs/graph-rag-build-report-20260711.md`.

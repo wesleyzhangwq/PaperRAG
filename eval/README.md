@@ -271,12 +271,12 @@ docker compose exec backend python scripts/sync_graph.py --all
 ```bash
 GRAPH_RAG_ENABLED=true \
 PYTHONPATH=.:backend backend/.venv/bin/python eval/run_rag_eval.py \
-  --dataset eval/datasets/questions_v3_200.jsonl \
-  --run-id rag-v3-200-service-graph \
+  --dataset eval/datasets/questions_501_test_200.jsonl \
+  --run-id test-graph-geo05-k20-c12 \
   --retriever service_graph \
-  --retrieval-top-k 12 --graph-expansion-top-k 12 --context-k 5 \
-  --compare-summary eval/results/rag/rag-v3-200-bge-m3-k12-20260710/summary.json \
-  --generate
+  --retrieval-top-k 20 --graph-expansion-top-k 20 --context-k 5 \
+  --context-strategy paper_dedup \
+  --compare-summary eval/results/rag-501/test-hybrid-a0.5-o4-k20-dedup5/summary.json
 ```
 
 候选报告会写入每题图扩展耗时、候选数、降级原因和五项门槛。仅当下列条件同时满足时，Graph RAG 才可合并并启用：
@@ -288,6 +288,12 @@ PYTHONPATH=.:backend backend/.venv/bin/python eval/run_rag_eval.py \
 | 整体 NDCG@5 | 不低于传统 Pure RAG -0.01 |
 | fixed-context citation support | 1.00 |
 | 图扩展 P95 | 不超过 800ms |
+
+2026-07-11 的 501 篇构图与冻结评测已完成，详见
+`docs/graph-rag-build-report-20260711.md`。Neo4j 含 501 个本地 Paper、
+40,132 条 CITES，MySQL/Neo4j 本地论文 ID 零差异；生产路径 0 降级，图扩展
+P95 为 69.56ms。但 comparison/trend Recall 均无增益，整体 NDCG@5
+0.7063 -> 0.7012，因此未通过启用门槛，`GRAPH_RAG_ENABLED` 保持默认关闭。
 
 ### 各题型表现
 

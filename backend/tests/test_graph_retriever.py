@@ -9,7 +9,7 @@ from langchain_core.documents import Document
 from app.db.neo4j import GraphCandidate
 
 
-def test_graph_second_pass_multiplies_semantic_and_path_scores() -> None:
+def test_graph_second_pass_geometrically_fuses_semantic_and_path_scores() -> None:
     from app.services.graph_retriever import retrieve_graph_context
 
     seed = Document(
@@ -31,6 +31,7 @@ def test_graph_second_pass_multiplies_semantic_and_path_scores() -> None:
         graph_seed_papers=4,
         graph_max_hops=2,
         graph_candidate_limit=12,
+        graph_score_alpha=0.5,
     )
     with patch(
         "app.services.graph_retriever.get_settings", return_value=settings
@@ -50,4 +51,4 @@ def test_graph_second_pass_multiplies_semantic_and_path_scores() -> None:
     assert report.fallback_reason is None
     assert documents[0].metadata["semantic_score"] == pytest.approx(0.8)
     assert documents[0].metadata["graph_score"] == pytest.approx(0.25)
-    assert documents[0].metadata["retrieval_score"] == pytest.approx(0.2)
+    assert documents[0].metadata["retrieval_score"] == pytest.approx((0.8 * 0.25) ** 0.5)

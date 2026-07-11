@@ -55,6 +55,8 @@ def build_projection_payload(
     authors: dict[tuple[str, str], dict[str, str]] = {}
 
     def add_authors(node: dict[str, object], remote: RemotePaper) -> None:
+        if not node.get("in_corpus"):
+            return
         for author_id, name in remote.authors:
             authors[(str(node["graph_key"]), author_id)] = {
                 "paper_key": str(node["graph_key"]),

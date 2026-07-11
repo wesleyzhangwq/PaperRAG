@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     semantic_scholar_min_interval_sec: float = 1.1
     semantic_scholar_max_retries: int = 5
     semantic_scholar_retry_backoff_sec: float = 1.0
-    semantic_scholar_neighbor_limit: int = 1000
+    semantic_scholar_neighbor_limit: int = 200
 
     # --- Cloud LLM (MiniMax) ---
     llm_model: str = "MiniMax-M2.7"

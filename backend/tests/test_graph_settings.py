@@ -9,6 +9,9 @@ def test_graph_settings_default_to_a_disabled_bounded_feature() -> None:
     assert settings.graph_max_hops == 2
     assert settings.graph_candidate_limit == 12
     assert settings.graph_query_timeout_ms == 800
+    assert settings.semantic_scholar_min_interval_sec == 1.1
+    assert settings.semantic_scholar_max_retries == 5
+    assert settings.semantic_scholar_neighbor_limit == 1000
     assert settings.neo4j_uri is None
 
 

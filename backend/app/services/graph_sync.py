@@ -126,21 +126,35 @@ def _successful_papers(db: Session) -> list[Paper]:
     )
 
 
-def run_graph_sync(paper_ids: Optional[Iterable[str]] = None) -> dict[str, int]:
+def run_graph_sync(
+    paper_ids: Optional[Iterable[str]] = None,
+    *,
+    force: bool = False,
+) -> dict[str, int]:
     """Synchronize all local papers or an explicit set of arXiv IDs."""
     init_db()
     requested = {str(paper_id) for paper_id in paper_ids or [] if str(paper_id)}
-    stats = {"ok": 0, "unresolved": 0, "failed": 0, "pending": 0, "total": 0}
+    stats = {
+        "ok": 0,
+        "unresolved": 0,
+        "failed": 0,
+        "pending": 0,
+        "skipped_ok": 0,
+        "total": 0,
+    }
     db = SessionLocal()
     try:
         local = _successful_papers(db)
         local_papers = {paper.paper_id: paper for paper in local}
         targets = [paper for paper in local if not requested or paper.paper_id in requested]
         for paper in targets:
+            stats["total"] += 1
+            if paper.graph_sync_status == "ok" and not force:
+                stats["skipped_ok"] += 1
+                continue
             status = sync_paper(db, paper, local_papers=local_papers)
             stats[status] += 1
-            stats["total"] += 1
-        db.commit()
+            db.commit()
     except Exception:
         db.rollback()
         raise

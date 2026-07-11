@@ -60,3 +60,32 @@ def test_sync_paper_marks_failure_without_raising() -> None:
     assert status == "failed"
     assert paper.graph_sync_status == "failed"
     assert "offline" in paper.graph_sync_error
+
+
+def test_run_graph_sync_skips_completed_papers_and_commits_each_attempt() -> None:
+    from app.services.graph_sync import run_graph_sync
+
+    completed = _paper(paper_id="2401.00001", graph_sync_status="ok")
+    pending = _paper(paper_id="2401.00002", graph_sync_status="pending")
+    db = MagicMock()
+    with patch("app.services.graph_sync.init_db"), patch(
+        "app.services.graph_sync.SessionLocal", return_value=db
+    ), patch(
+        "app.services.graph_sync._successful_papers", return_value=[completed, pending]
+    ), patch("app.services.graph_sync.sync_paper", return_value="ok") as mock_sync:
+        stats = run_graph_sync()
+
+    mock_sync.assert_called_once_with(
+        db,
+        pending,
+        local_papers={completed.paper_id: completed, pending.paper_id: pending},
+    )
+    assert db.commit.call_count == 1
+    assert stats == {
+        "ok": 1,
+        "unresolved": 0,
+        "failed": 0,
+        "pending": 0,
+        "skipped_ok": 1,
+        "total": 2,
+    }

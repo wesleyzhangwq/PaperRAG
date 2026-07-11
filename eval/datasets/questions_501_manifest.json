@@ -513,7 +513,7 @@
   "generations": {
     "dev": {
       "output": "eval/datasets/questions_501_dev_50.jsonl",
-      "sha256": "e5bf56678de2a06aaec2470b95759cf899e99c04be4fb83faefbebbe9984dea2",
+      "sha256": "9f5341ccc5d28b19c5c4dcde6467afc3d6400fb9b313702242ebd4c08d9f3b7e",
       "plan": {
         "concept_locate": 15,
         "method_detail": 10,
@@ -546,11 +546,17 @@
         "llm": 45,
         "static": 5
       },
-      "generated_at": "2026-07-11T02:33:13.263050+00:00"
+      "generated_at": "2026-07-11T02:33:13.263050+00:00",
+      "negative_audit": {
+        "report": "eval/datasets/questions_501_negative_audit.json",
+        "method": "case-insensitive phrase scan with ASCII token boundaries",
+        "questions_with_direct_match": 0,
+        "audited_at": "2026-07-11T07:59:53.496215+00:00"
+      }
     },
     "test": {
       "output": "eval/datasets/questions_501_test_200.jsonl",
-      "sha256": "5c5f863a13d382dfb5ff8889efa295bd9b0c96110ed287dd687ab4b91a44d581",
+      "sha256": "30f3fec3850e80a8c66cc9aa55504784d32c716c89eff5a98b87e471a16e96ba",
       "plan": {
         "concept_locate": 60,
         "method_detail": 40,
@@ -584,7 +590,13 @@
         "manual_evidence_review": 1,
         "static": 20
       },
-      "generated_at": "2026-07-11T02:33:13.277731+00:00"
+      "generated_at": "2026-07-11T02:33:13.277731+00:00",
+      "negative_audit": {
+        "report": "eval/datasets/questions_501_negative_audit.json",
+        "method": "case-insensitive phrase scan with ASCII token boundaries",
+        "questions_with_direct_match": 0,
+        "audited_at": "2026-07-11T07:59:53.496215+00:00"
+      }
     }
   },
   "generated_at": "2026-07-11T02:33:13.261942+00:00",

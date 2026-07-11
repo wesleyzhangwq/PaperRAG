@@ -6,6 +6,7 @@ import pytest
 
 from eval.scripts.gen_questions import (
     _parse_json,
+    audit_negative_questions,
     build_generation_plan,
     build_split_manifest,
     build_trend_topic_groups,
@@ -66,11 +67,31 @@ def test_make_negative_questions_extends_static_bank_with_stable_ids() -> None:
     assert {q["type"] for q in questions} == {"negative"}
     assert {q["expected_mode"] for q in questions} == {"insufficient"}
     assert all(q["expected_paper_ids"] == [] for q in questions)
+    assert all(q["audit_terms"] for q in questions)
+    assert not any("金融风控" in q["query"] or "RLHF" in q["query"] for q in questions)
     assert Counter(q["difficulty"] for q in questions) == {
         "easy": 7,
         "medium": 6,
         "hard": 7,
     }
+
+
+def test_audit_negative_questions_uses_term_boundaries() -> None:
+    questions = [
+        {
+            "qid": "n001",
+            "audit_terms": ["scribe", "medieval manuscript"],
+        }
+    ]
+    papers = [
+        {"paper_id": "A", "title": "Describe a planning agent", "abstract": ""},
+        {"paper_id": "B", "title": "A medieval manuscript study", "abstract": ""},
+    ]
+
+    audit = audit_negative_questions(questions, papers)
+
+    assert audit[0]["matching_paper_ids"] == ["B"]
+    assert audit[0]["matched_terms"] == ["medieval manuscript"]
 
 
 def test_validate_question_set_checks_count_distribution_and_placeholders() -> None:

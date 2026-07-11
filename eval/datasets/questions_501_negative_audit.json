@@ -1,0 +1,110 @@
+{
+  "corpus": "mysql_papers_501_20260711.json",
+  "scope": "paper title and abstract",
+  "method": "case-insensitive phrase scan with ASCII token boundaries",
+  "audited_at": "2026-07-11T07:59:53.496215+00:00",
+  "question_count": 20,
+  "questions_with_direct_match": 0,
+  "per_question": [
+    {
+      "qid": "n001",
+      "matching_paper_ids": [],
+      "matched_terms": []
+    },
+    {
+      "qid": "n002",
+      "matching_paper_ids": [],
+      "matched_terms": []
+    },
+    {
+      "qid": "n003",
+      "matching_paper_ids": [],
+      "matched_terms": []
+    },
+    {
+      "qid": "n004",
+      "matching_paper_ids": [],
+      "matched_terms": []
+    },
+    {
+      "qid": "n005",
+      "matching_paper_ids": [],
+      "matched_terms": []
+    },
+    {
+      "qid": "n006",
+      "matching_paper_ids": [],
+      "matched_terms": []
+    },
+    {
+      "qid": "n007",
+      "matching_paper_ids": [],
+      "matched_terms": []
+    },
+    {
+      "qid": "n008",
+      "matching_paper_ids": [],
+      "matched_terms": []
+    },
+    {
+      "qid": "n009",
+      "matching_paper_ids": [],
+      "matched_terms": []
+    },
+    {
+      "qid": "n010",
+      "matching_paper_ids": [],
+      "matched_terms": []
+    },
+    {
+      "qid": "n011",
+      "matching_paper_ids": [],
+      "matched_terms": []
+    },
+    {
+      "qid": "n012",
+      "matching_paper_ids": [],
+      "matched_terms": []
+    },
+    {
+      "qid": "n013",
+      "matching_paper_ids": [],
+      "matched_terms": []
+    },
+    {
+      "qid": "n014",
+      "matching_paper_ids": [],
+      "matched_terms": []
+    },
+    {
+      "qid": "n015",
+      "matching_paper_ids": [],
+      "matched_terms": []
+    },
+    {
+      "qid": "n016",
+      "matching_paper_ids": [],
+      "matched_terms": []
+    },
+    {
+      "qid": "n017",
+      "matching_paper_ids": [],
+      "matched_terms": []
+    },
+    {
+      "qid": "n018",
+      "matching_paper_ids": [],
+      "matched_terms": []
+    },
+    {
+      "qid": "n019",
+      "matching_paper_ids": [],
+      "matched_terms": []
+    },
+    {
+      "qid": "n020",
+      "matching_paper_ids": [],
+      "matched_terms": []
+    }
+  ]
+}

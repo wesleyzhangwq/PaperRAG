@@ -776,7 +776,9 @@ def gen_trend_questions(
     return questions
 
 
-NEGATIVE_QUESTIONS = [
+# Retained for provenance only. Several entries became false negatives after
+# the corpus expanded from 100 to 501 papers; generation must not use this bank.
+UNAUDITED_LEGACY_NEGATIVE_QUESTIONS = [
     {
         "qid": "n001",
         "query": "这些论文中有哪些关于蛋白质折叠预测（如 AlphaFold）的研究？",
@@ -879,7 +881,7 @@ NEGATIVE_QUESTIONS = [
     },
 ]
 
-EXTRA_NEGATIVE_QUESTIONS = [
+UNAUDITED_LEGACY_EXTRA_NEGATIVE_QUESTIONS = [
     {
         "query": "这些论文中有哪些关于量子纠错码和容错量子计算硬件实现的研究？",
         "reference_answer": "本语料库中没有关于量子纠错码或容错量子计算硬件实现的论文。",
@@ -942,9 +944,77 @@ EXTRA_NEGATIVE_QUESTIONS = [
     },
 ]
 
+# Audited against the 501-paper title/abstract snapshot. These deliberately use
+# domains outside the corpus instead of fragile near-misses to avoid false negatives.
+VERIFIED_NEGATIVE_QUESTIONS = [
+    ("这些论文中有哪些使用放射性碳测年分析青铜时代陶器年代的考古研究？", "本语料库中没有关于青铜时代陶器放射性碳测年的论文。", "easy", ["radiocarbon", "bronze age", "ceramic"]),
+    ("请总结语料库中关于珊瑚礁产卵生态与白化现场调查的长期研究。", "本语料库中没有关于珊瑚礁产卵生态或白化现场调查的论文。", "medium", ["coral reef", "spawning", "bleaching"]),
+    ("有哪些论文通过同位素地球化学研究火山岩浆房演化？", "本语料库中没有关于火山岩浆房同位素地球化学的论文。", "easy", ["volcanic", "magma chamber", "isotope geochemistry"]),
+    ("请比较这些论文对中世纪手稿古文字学断代与抄写员身份鉴定的方法。", "本语料库中没有关于中世纪手稿古文字学断代或抄写员鉴定的论文。", "hard", ["medieval manuscript", "paleography", "scribe"]),
+    ("这些论文是否报告了疟疾疫苗三期随机对照临床试验的有效性与不良反应？", "本语料库中没有疟疾疫苗三期随机对照临床试验论文。", "hard", ["malaria vaccine", "phase iii", "randomized trial"]),
+    ("请归纳语料库中利用凌日光谱寻找系外行星大气生物标志物的研究。", "本语料库中没有关于系外行星凌日光谱或大气生物标志物的论文。", "easy", ["exoplanet", "transit spectroscopy", "biosignature"]),
+    ("语料库中有哪些利用南极冰芯同位素重建古气候的钻探研究？", "本语料库中没有关于南极冰芯钻探与古气候同位素重建的论文。", "hard", ["antarctic ice core", "paleoclimate", "isotope"]),
+    ("这些论文有讨论大型强子对撞机粒子探测器的束流标定实验吗？", "本语料库中没有大型强子对撞机粒子探测器束流标定实验论文。", "hard", ["large hadron collider", "particle detector", "beam calibration"]),
+    ("请总结语料库中利用古 DNA 推断史前人群迁徙路线的考古遗传学研究。", "本语料库中没有利用古DNA研究史前人群迁徙的论文。", "easy", ["ancient dna", "prehistoric migration", "archaeogenetics"]),
+    ("有哪些论文研究深海热液喷口微生物群落的宏基因组组成？", "本语料库中没有深海热液喷口微生物宏基因组研究。", "medium", ["hydrothermal vent", "microbiome", "metagenomic"]),
+    ("这些论文中有哪些通过树轮年代学分析森林长期干旱响应的生态研究？", "本语料库中没有通过树轮年代学研究森林干旱响应的论文。", "easy", ["dendrochronology", "tree ring", "forest drought"]),
+    ("请总结语料库中基于野外台站数据反演地震断层层析结构的工作。", "本语料库中没有地震断层层析成像或野外台站反演论文。", "easy", ["seismic tomography", "fault", "field station"]),
+    ("这些论文是否报告了固态电解质材料合成与原位显微表征实验？", "本语料库中没有固态电解质合成或原位显微表征实验论文。", "easy", ["solid-state electrolyte", "operando microscopy", "material synthesis"]),
+    ("语料库中有哪些针对混凝土桥梁全尺寸疲劳载荷试验的结构工程研究？", "本语料库中没有混凝土桥梁全尺寸疲劳载荷试验论文。", "medium", ["concrete bridge", "fatigue load", "full-scale test"]),
+    ("请归纳这些论文中关于新型抗生素化学合成与体外抑菌实验的工作。", "本语料库中没有新型抗生素化学合成或体外抑菌实验论文。", "medium", ["antibiotic synthesis", "antibacterial assay", "in vitro"]),
+    ("有哪些论文利用卫星遥测追踪候鸟跨洲迁徙路线与停歇地？", "本语料库中没有利用卫星遥测研究候鸟迁徙的论文。", "medium", ["avian migration", "satellite telemetry", "stopover"]),
+    ("这些论文中是否包含利用连续 GPS 观测估计板块运动速度的测地学研究？", "本语料库中没有利用连续GPS观测估计板块运动的测地学论文。", "medium", ["geodesy", "plate motion", "continuous gps"]),
+    ("请比较语料库中使用标记重捕法开展鱼类种群数量评估的海洋生态研究。", "本语料库中没有使用标记重捕法评估鱼类种群的论文。", "hard", ["fish stock", "mark recapture", "population assessment"]),
+    ("有哪些论文系统比较了器官移植后免疫抑制方案的多年随机临床结局？", "本语料库中没有器官移植免疫抑制方案随机临床结局论文。", "hard", ["organ transplant", "immunosuppression", "clinical outcome"]),
+    ("这些论文是否开展了城市污水中病原体传播的长期流行病学采样研究？", "本语料库中没有城市污水病原体传播的长期流行病学采样论文。", "hard", ["wastewater", "pathogen", "epidemiological sampling"]),
+]
+
+
+def audit_negative_questions(questions: list[dict], papers: list[dict]) -> list[dict]:
+    corpus = [
+        (
+            str(paper.get("paper_id") or ""),
+            f"{paper.get('title') or ''} {paper.get('abstract') or ''}".lower(),
+        )
+        for paper in papers
+    ]
+    audit: list[dict] = []
+    for question in questions:
+        matching_paper_ids: list[str] = []
+        matched_terms: set[str] = set()
+        for paper_id, text in corpus:
+            paper_matched = False
+            for raw_term in question.get("audit_terms") or []:
+                term = str(raw_term).lower().strip()
+                if not term:
+                    continue
+                pattern = rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])"
+                if re.search(pattern, text):
+                    matched_terms.add(raw_term)
+                    paper_matched = True
+            if paper_matched:
+                matching_paper_ids.append(paper_id)
+        audit.append(
+            {
+                "qid": question.get("qid"),
+                "matching_paper_ids": matching_paper_ids,
+                "matched_terms": sorted(matched_terms),
+            }
+        )
+    return audit
+
 
 def make_negative_questions(count: int = 10) -> list[dict]:
-    bank = NEGATIVE_QUESTIONS + EXTRA_NEGATIVE_QUESTIONS
+    bank = [
+        {
+            "query": query,
+            "reference_answer": answer,
+            "difficulty": difficulty,
+            "tags": ["negative", "out-of-scope", "corpus-audited"],
+            "audit_terms": audit_terms,
+        }
+        for query, answer, difficulty, audit_terms in VERIFIED_NEGATIVE_QUESTIONS
+    ]
     if count > len(bank):
         raise ValueError(f"Only {len(bank)} negative questions are available, got {count}")
     questions = []

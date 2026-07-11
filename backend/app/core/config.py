@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     # --- Agent ---
     agent_max_plan_steps: int = 7
     agent_max_reflections: int = 2
+    agent_external_retrieval_enabled: bool = True
     agent_checkpoint_enabled: bool = True
     agent_checkpoint_path: str = str(PROJECT_ROOT / "data" / "langgraph_checkpoints.sqlite")
 

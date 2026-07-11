@@ -24,6 +24,13 @@ EXECUTABLE_ACTIONS = {
     "get_paper_detail", "get_paper_chunks",
 }
 QUERY_ACTIONS = {"retrieve_local", "retrieve_arxiv", "search_web"}
+EXTERNAL_RETRIEVAL_ACTIONS = {"retrieve_arxiv", "search_web"}
+
+
+def _filter_external_steps(steps: list[StepSpec], *, enabled: bool) -> list[StepSpec]:
+    if enabled:
+        return steps
+    return [step for step in steps if step["action"] not in EXTERNAL_RETRIEVAL_ACTIONS]
 
 
 def _get_llm() -> ChatOpenAI:
@@ -107,11 +114,16 @@ def _sanitize_supplementary_steps(
 ) -> list[StepSpec]:
     """Keep only executable retrieval steps for the supplement loop."""
     fallback = _supplement_query(query, issues, missing_aspects)
+    external_enabled = bool(
+        getattr(get_settings(), "agent_external_retrieval_enabled", True)
+    )
     sanitized: list[StepSpec] = []
     seen: set[tuple[str, str]] = set()
     for step in steps:
         action = step.get("action", "")
         if action not in EXECUTABLE_ACTIONS:
+            continue
+        if not external_enabled and action in EXTERNAL_RETRIEVAL_ACTIONS:
             continue
         params = dict(step.get("params") or {})
         if action in {"retrieve_local", "retrieve_arxiv", "search_web"}:
@@ -159,6 +171,16 @@ def planner_node(state: AgentState, *, query: str) -> dict:
             settings.agent_max_plan_steps,
             default_query=query,
         )
+        plan = _filter_external_steps(
+            plan,
+            enabled=bool(getattr(settings, "agent_external_retrieval_enabled", True)),
+        )
+        if not plan:
+            plan = [StepSpec(
+                action="retrieve_local",
+                params={"query": query, "top_k": settings.retrieval_k},
+                reason="本地检索模式：使用语料库检索",
+            )]
         emit_plan(plan, revision=0)
         s.done(f"{len(plan)} 个检索步骤", detail={"steps": [p["action"] for p in plan]})
 

@@ -159,14 +159,17 @@ def retrieve_graph_context(
             # Retrieval filters should make this impossible, but do not attach
             # graph provenance to a chunk we cannot attribute to a candidate.
             continue
-        combined_score = float(score) * float(candidate.graph_score)
+        alpha = min(1.0, max(0.0, float(settings.graph_score_alpha)))
+        semantic_score = max(0.0, float(score))
+        graph_score = max(0.0, float(candidate.graph_score))
+        combined_score = (semantic_score**alpha) * (graph_score ** (1.0 - alpha))
         graph_documents.append(with_retrieval_metadata(
             doc,
             combined_score,
             source="graph_local",
             graph_score=candidate.graph_score,
             graph_paths=[dict(path) for path in candidate.paths],
-            semantic_score=float(score),
+            semantic_score=semantic_score,
         ))
 
     if not graph_documents:

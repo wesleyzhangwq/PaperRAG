@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     graph_seed_papers: int = 4
     graph_max_hops: int = 2
     graph_candidate_limit: int = 12
+    graph_score_alpha: float = 0.5
     graph_query_timeout_ms: int = 800
     semantic_scholar_api_key: Optional[str] = None
     semantic_scholar_min_interval_sec: float = 1.1

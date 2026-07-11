@@ -42,6 +42,10 @@ def _get_llm() -> ChatOpenAI:
 
 
 def _context_paper_ids(state: AgentState) -> set[str]:
+    synthesis_ids = state.get("synthesis_context_paper_ids")
+    if synthesis_ids is not None:
+        return {str(pid) for pid in synthesis_ids if str(pid or "").strip()}
+
     ids = set()
     for d in state.get("retrieval_context") or []:
         pid = (d.metadata or {}).get("paper_id")

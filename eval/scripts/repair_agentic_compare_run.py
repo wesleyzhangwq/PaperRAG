@@ -58,6 +58,7 @@ def recompute_case_rows(rows: list[dict]) -> list[dict]:
             expected_mode=str(row.get("expected_mode") or "answer"),
             answer=str(row.get("answer_for_metrics") or row.get("answer") or ""),
             source_pids=list(row.get("source_pids") or []),
+            context_pids=list(row.get("context_pids") or row.get("source_pids") or []),
             latency_s=float(row.get("latency_s") or 0.0),
             used_chunks=int(row.get("used_chunks") or 0),
             step_count=int(row.get("step_count") or 0),

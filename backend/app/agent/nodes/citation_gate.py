@@ -37,11 +37,15 @@ def citation_gate_node(state: AgentState, *, db: Session) -> dict:
     t0 = time.perf_counter()
     with stage("citation") as s:
         answer = state.get("final_answer") or ""
-        context_ids = {
-            (d.metadata or {}).get("paper_id")
-            for d in state.get("retrieval_context") or []
-            if (d.metadata or {}).get("paper_id")
-        }
+        synthesis_ids = state.get("synthesis_context_paper_ids")
+        if synthesis_ids is not None:
+            context_ids = {str(pid) for pid in synthesis_ids if str(pid or "").strip()}
+        else:
+            context_ids = {
+                (d.metadata or {}).get("paper_id")
+                for d in state.get("retrieval_context") or []
+                if (d.metadata or {}).get("paper_id")
+            }
 
         cited_ids: list[str] = []
         for m in _CITATION_RE.finditer(answer):
@@ -52,6 +56,11 @@ def citation_gate_node(state: AgentState, *, db: Session) -> dict:
         sources: list[Source] = []
         removed: list[str] = []
         for pid in cited_ids:
+            if pid not in context_ids:
+                removed.append(pid)
+                answer = answer.replace(f"[arxiv:{pid}]", "")
+                continue
+
             paper = db.query(Paper).filter(Paper.paper_id == pid).one_or_none()
             if paper is not None and _is_visible(paper):
                 sources.append(Source(
@@ -63,7 +72,7 @@ def citation_gate_node(state: AgentState, *, db: Session) -> dict:
                     doi=paper.doi,
                     arxiv_url=f"https://arxiv.org/abs/{pid}",
                 ))
-            elif pid in context_ids:
+            else:
                 # In context (e.g. fresh arXiv API result) but not ingested into
                 # MySQL yet — keep the citation, build a minimal source.
                 sources.append(Source(
@@ -75,10 +84,6 @@ def citation_gate_node(state: AgentState, *, db: Session) -> dict:
                     doi=None,
                     arxiv_url=f"https://arxiv.org/abs/{pid}",
                 ))
-            else:
-                # Unresolvable citation: strip the marker from the answer.
-                removed.append(pid)
-                answer = answer.replace(f"[arxiv:{pid}]", "")
 
         if removed:
             answer = re.sub(r" {2,}", " ", answer)

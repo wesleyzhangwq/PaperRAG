@@ -142,8 +142,32 @@ def test_groundedness_deterministic_precheck_catches_fabricated_citation():
     mock_llm.invoke.assert_not_called()
 
 
+def test_groundedness_rejects_citation_outside_synthesis_context():
+    mock_llm = MagicMock()
+    state = _base_state(
+        retrieval_context=[
+            Document(page_content="used", metadata={"paper_id": "1706.03762"}),
+            Document(page_content="retrieved only", metadata={"paper_id": "1810.04805"}),
+        ],
+        synthesis_context_paper_ids=["1706.03762"],
+        final_answer="Unsupported by final context [arxiv:1810.04805]",
+    )
+
+    with patch("app.agent.nodes.groundedness._get_llm", return_value=mock_llm):
+        result = groundedness_node(state, query="what is attention")
+
+    assert result["reflection_result"]["citation_ok"] is False
+    mock_llm.invoke.assert_not_called()
+
+
 def test_citation_gate_extracts_citations():
-    state = _base_state(final_answer="This uses attention [arxiv:1706.03762] and BERT [arxiv:1810.04805]")
+    state = _base_state(
+        retrieval_context=[
+            Document(page_content="attention", metadata={"paper_id": "1706.03762"}),
+            Document(page_content="bert", metadata={"paper_id": "1810.04805"}),
+        ],
+        final_answer="This uses attention [arxiv:1706.03762] and BERT [arxiv:1810.04805]",
+    )
     mock_db = MagicMock()
     mock_paper = MagicMock()
     mock_paper.title = "Attention Paper"
@@ -186,6 +210,25 @@ def test_citation_gate_strips_unresolvable_citation():
     assert result["removed_citations"] == ["9999.99999"]
     assert "[arxiv:9999.99999]" not in result["final_answer"]
     assert "[arxiv:1706.03762]" in result["final_answer"]
+
+
+def test_citation_gate_strips_db_paper_outside_synthesis_context():
+    state = _base_state(
+        retrieval_context=[
+            Document(page_content="used", metadata={"paper_id": "1706.03762"}),
+            Document(page_content="retrieved only", metadata={"paper_id": "1810.04805"}),
+        ],
+        synthesis_context_paper_ids=["1706.03762"],
+        final_answer="Unsupported [arxiv:1810.04805].",
+    )
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.one_or_none.return_value = MagicMock()
+
+    result = citation_gate_node(state, db=mock_db)
+
+    assert result["sources"] == []
+    assert result["removed_citations"] == ["1810.04805"]
+    assert "[arxiv:1810.04805]" not in result["final_answer"]
 
 
 def test_citation_gate_keeps_context_only_citation_with_minimal_source():

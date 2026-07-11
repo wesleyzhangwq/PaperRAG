@@ -42,8 +42,25 @@ def strip_thinking_for_metrics(answer: str) -> str:
 
 
 def detect_abstention(answer: str) -> bool:
-    text = (answer or "").lower()
-    return any(term.lower() in text for term in ABSTENTION_TERMS)
+    text = strip_thinking_for_metrics(answer).strip().lower()
+    if not text:
+        return False
+
+    content_lines = [
+        line.strip().lstrip("#>*- ")
+        for line in text.splitlines()
+        if line.strip().lstrip("#>*- ")
+    ]
+    while content_lines and content_lines[0] in {"回答", "answer", "结论", "conclusion"}:
+        content_lines.pop(0)
+    if not content_lines:
+        return False
+
+    opening = content_lines[0]
+    sentence_end = re.search(r"[。！？!?]", opening)
+    if sentence_end:
+        opening = opening[: sentence_end.end()]
+    return any(term.lower() in opening for term in ABSTENTION_TERMS)
 
 
 def _unique(items: list[str]) -> list[str]:

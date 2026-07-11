@@ -103,6 +103,16 @@ def test_detect_abstention_recognizes_grounded_chinese_refusal_variants() -> Non
     assert detect_abstention("论文未提供具体阈值，但摘要足以说明其方法。") is False
 
 
+def test_detect_abstention_does_not_treat_partial_caveat_as_full_refusal() -> None:
+    answer = (
+        "根据参考资料，最直接相关的研究是 Contextual StereoSet。"
+        "该工作系统改变时间、地点和受众，并报告显著的偏见变化。"
+        "参考资料不足以回答论文未披露的训练细节。"
+    )
+
+    assert detect_abstention(answer) is False
+
+
 def test_summarize_answer_cases_groups_by_type_and_latency() -> None:
     rows = [
         answer_case_metrics(

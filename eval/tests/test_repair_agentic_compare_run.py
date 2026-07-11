@@ -71,3 +71,29 @@ def test_recompute_case_rows_applies_updated_abstention_rules() -> None:
 
     assert updated[0]["mode_correct"] is True
     assert updated[0]["answer_abstained"] is True
+
+
+def test_recompute_case_rows_preserves_final_context_for_citation_support() -> None:
+    from eval.scripts.repair_agentic_compare_run import recompute_case_rows
+
+    rows = [
+        {
+            "qid": "c001",
+            "type": "concept_locate",
+            "difficulty": "easy",
+            "expected_pids": ["1111.1111"],
+            "expected_mode": "answer",
+            "answer": "Evidence [arxiv:1111.1111] and [arxiv:2222.2222].",
+            "answer_for_metrics": "Evidence [arxiv:1111.1111] and [arxiv:2222.2222].",
+            "source_pids": ["1111.1111", "2222.2222"],
+            "context_pids": ["1111.1111"],
+            "latency_s": 1.0,
+            "used_chunks": 1,
+            "step_count": 2,
+            "retrieval_step_count": 1,
+        }
+    ]
+
+    updated = recompute_case_rows(rows)
+
+    assert updated[0]["citation_support_rate"] == 0.5

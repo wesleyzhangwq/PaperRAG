@@ -55,6 +55,8 @@ def build_projection_payload(
     authors: dict[tuple[str, str], dict[str, str]] = {}
 
     def add_authors(node: dict[str, object], remote: RemotePaper) -> None:
+        if not node.get("in_corpus"):
+            return
         for author_id, name in remote.authors:
             authors[(str(node["graph_key"]), author_id)] = {
                 "paper_key": str(node["graph_key"]),
@@ -111,6 +113,29 @@ def sync_paper(
             categories=payload["categories"],
         )
     except CitationSourceNotFound:
+        try:
+            get_neo4j_repository().replace_source_projection(
+                source_paper_id=paper.paper_id,
+                papers=[
+                    {
+                        "graph_key": f"arxiv:{paper.paper_id}",
+                        "paper_id": paper.paper_id,
+                        "s2_paper_id": None,
+                        "title": paper.title,
+                        "year": paper.year,
+                        "in_corpus": True,
+                    }
+                ],
+                citation_edges=[],
+                authors=[],
+                categories=[
+                    str(category)
+                    for category in paper.categories or []
+                    if str(category)
+                ],
+            )
+        except Exception as exc:
+            return _mark(paper, "failed", f"{type(exc).__name__}: {exc}")
         return _mark(paper, "unresolved")
     except Exception as exc:
         return _mark(paper, "failed", f"{type(exc).__name__}: {exc}")
@@ -126,21 +151,35 @@ def _successful_papers(db: Session) -> list[Paper]:
     )
 
 
-def run_graph_sync(paper_ids: Optional[Iterable[str]] = None) -> dict[str, int]:
+def run_graph_sync(
+    paper_ids: Optional[Iterable[str]] = None,
+    *,
+    force: bool = False,
+) -> dict[str, int]:
     """Synchronize all local papers or an explicit set of arXiv IDs."""
     init_db()
     requested = {str(paper_id) for paper_id in paper_ids or [] if str(paper_id)}
-    stats = {"ok": 0, "unresolved": 0, "failed": 0, "pending": 0, "total": 0}
+    stats = {
+        "ok": 0,
+        "unresolved": 0,
+        "failed": 0,
+        "pending": 0,
+        "skipped_ok": 0,
+        "total": 0,
+    }
     db = SessionLocal()
     try:
         local = _successful_papers(db)
         local_papers = {paper.paper_id: paper for paper in local}
         targets = [paper for paper in local if not requested or paper.paper_id in requested]
         for paper in targets:
+            stats["total"] += 1
+            if paper.graph_sync_status == "ok" and not force:
+                stats["skipped_ok"] += 1
+                continue
             status = sync_paper(db, paper, local_papers=local_papers)
             stats[status] += 1
-            stats["total"] += 1
-        db.commit()
+            db.commit()
     except Exception:
         db.rollback()
         raise

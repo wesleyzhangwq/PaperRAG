@@ -30,6 +30,7 @@ PaperRAG 是一个面向学术论文问答的 **Agentic RAG** 系统。它把 ar
 - **Agentic workflow**: 8 个 LangGraph 节点，覆盖 `intent -> planner -> executor -> synthesis -> reflection -> re_planner -> final_answer -> presentation`。
 - **Adaptive retrieval plan**: Planner 根据问题复杂度生成不同检索计划，而不是固定跑一条 RAG pipeline。
 - **Hybrid retrieval**: Qdrant dense vector search 与 BM25 sparse ranking 融合，支持 oversampling、alpha 权重和检索缓存。
+- **Optional Graph RAG**: Neo4j 以 Semantic Scholar 引用关系扩展本地论文候选，最终回答证据仍只来自 MySQL/Qdrant 本地 chunks。
 - **Self-verification**: `evaluate_docs` 与 `reflection` 分别检查资料充分性和回答质量，失败后触发补充检索或重新生成。
 - **Transparent execution**: 前端通过 SSE 展示每一步耗时、参数、结果摘要、检索片段和调试详情。
 - **Corpus overview**: 新对话和论文库页面可以展示当前 RAG 语料库的主题分布、代表论文和建议问题。
@@ -117,6 +118,7 @@ frontend/src/
 | --- | --- |
 | MySQL 8 | Paper metadata, chunks, conversations, chat history, upload jobs, feedback |
 | Qdrant | Dense vectors for paper chunks |
+| Neo4j | Rebuildable paper/author/category projection for bounded Graph RAG traversal |
 | BM25 cache | Sparse retrieval over chunk text for hybrid ranking |
 | SQLite checkpoint | LangGraph thread checkpoint state |
 | Local `data/` | PDFs, metadata JSON, checkpoint files and transient artifacts |
@@ -155,6 +157,26 @@ TAVILY_API_KEY=...        # web search supplement
 API_AUTH_ENABLED=true     # enable API key auth for deployment
 API_KEYS=your-key-1,...
 ```
+
+Graph RAG is optional and disabled by default. To build the citation projection:
+
+```bash
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=local-graph-password
+SEMANTIC_SCHOLAR_API_KEY=...
+SEMANTIC_SCHOLAR_MIN_INTERVAL_SEC=1.1
+SEMANTIC_SCHOLAR_NEIGHBOR_LIMIT=200
+GRAPH_RAG_ENABLED=true
+
+docker compose up -d neo4j
+cd backend
+python scripts/sync_graph.py --all
+```
+
+The sync command is resumable: papers already marked `ok` are skipped unless
+`--force` is supplied. Semantic Scholar request starts are serialized below one
+request per second, and retryable 429/5xx responses use bounded backoff.
 
 ### 2. Run backend
 
@@ -206,6 +228,13 @@ Open:
 ```text
 http://localhost:5173
 ```
+
+## Data Attribution
+
+Graph RAG citation metadata is provided by the
+[Semantic Scholar Academic Graph API](https://www.semanticscholar.org/product/api).
+If you publish results derived from this graph, cite Kinney et al.,
+[The Semantic Scholar Open Data Platform](https://arxiv.org/abs/2301.10140), 2023.
 
 ### 5. Docker full stack
 

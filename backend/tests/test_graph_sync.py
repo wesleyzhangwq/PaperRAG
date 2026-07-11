@@ -106,7 +106,9 @@ def test_run_graph_sync_skips_completed_papers_and_commits_each_attempt() -> Non
         "app.services.graph_sync.SessionLocal", return_value=db
     ), patch(
         "app.services.graph_sync._successful_papers", return_value=[completed, pending]
-    ), patch("app.services.graph_sync.sync_paper", return_value="ok") as mock_sync:
+    ), patch("app.services.graph_sync.sync_paper", return_value="ok") as mock_sync, patch(
+        "app.services.graph_sync.get_neo4j_repository"
+    ) as mock_repo:
         stats = run_graph_sync()
 
     mock_sync.assert_called_once_with(
@@ -115,6 +117,7 @@ def test_run_graph_sync_skips_completed_papers_and_commits_each_attempt() -> Non
         local_papers={completed.paper_id: completed, pending.paper_id: pending},
     )
     assert db.commit.call_count == 1
+    mock_repo.return_value.prune_orphans.assert_called_once_with()
     assert stats == {
         "ok": 1,
         "unresolved": 0,

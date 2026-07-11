@@ -180,6 +180,7 @@ def run_graph_sync(
             status = sync_paper(db, paper, local_papers=local_papers)
             stats[status] += 1
             db.commit()
+        get_neo4j_repository().prune_orphans()
     except Exception:
         db.rollback()
         raise

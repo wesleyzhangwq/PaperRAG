@@ -111,6 +111,21 @@ class Neo4jGraphRepository:
         except Neo4jError as exc:
             raise GraphUnavailable(f"projection write failed: {type(exc).__name__}: {exc}") from exc
 
+    def prune_orphans(self) -> None:
+        statements = (
+            "MATCH (node:Paper {in_corpus: false}) WHERE NOT (node)--() DELETE node",
+            "MATCH (node:Author) WHERE NOT (node)--() DELETE node",
+            "MATCH (node:Category) WHERE NOT (node)--() DELETE node",
+        )
+        try:
+            with self._driver.session(database=self._database) as session:
+                for statement in statements:
+                    session.run(statement, timeout=self._timeout_seconds).consume()
+        except Neo4jError as exc:
+            raise GraphUnavailable(
+                f"orphan cleanup failed: {type(exc).__name__}: {exc}"
+            ) from exc
+
     def expand_local_papers(
         self,
         *,

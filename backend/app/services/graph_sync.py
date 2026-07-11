@@ -113,6 +113,29 @@ def sync_paper(
             categories=payload["categories"],
         )
     except CitationSourceNotFound:
+        try:
+            get_neo4j_repository().replace_source_projection(
+                source_paper_id=paper.paper_id,
+                papers=[
+                    {
+                        "graph_key": f"arxiv:{paper.paper_id}",
+                        "paper_id": paper.paper_id,
+                        "s2_paper_id": None,
+                        "title": paper.title,
+                        "year": paper.year,
+                        "in_corpus": True,
+                    }
+                ],
+                citation_edges=[],
+                authors=[],
+                categories=[
+                    str(category)
+                    for category in paper.categories or []
+                    if str(category)
+                ],
+            )
+        except Exception as exc:
+            return _mark(paper, "failed", f"{type(exc).__name__}: {exc}")
         return _mark(paper, "unresolved")
     except Exception as exc:
         return _mark(paper, "failed", f"{type(exc).__name__}: {exc}")

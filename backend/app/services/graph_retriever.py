@@ -33,6 +33,7 @@ def with_retrieval_metadata(
     source: str,
     graph_score: float | None = None,
     graph_paths: list[dict[str, object]] | None = None,
+    semantic_score: float | None = None,
 ) -> Document:
     """Copy a retrieved document while preserving retrieval provenance.
 
@@ -46,6 +47,8 @@ def with_retrieval_metadata(
     }
     if graph_score is not None:
         metadata["graph_score"] = float(graph_score)
+    if semantic_score is not None:
+        metadata["semantic_score"] = float(semantic_score)
     if graph_paths:
         metadata["graph_paths"] = graph_paths
     return Document(page_content=doc.page_content, metadata=metadata)
@@ -156,12 +159,14 @@ def retrieve_graph_context(
             # Retrieval filters should make this impossible, but do not attach
             # graph provenance to a chunk we cannot attribute to a candidate.
             continue
+        combined_score = float(score) * float(candidate.graph_score)
         graph_documents.append(with_retrieval_metadata(
             doc,
-            score,
+            combined_score,
             source="graph_local",
             graph_score=candidate.graph_score,
             graph_paths=[dict(path) for path in candidate.paths],
+            semantic_score=float(score),
         ))
 
     if not graph_documents:

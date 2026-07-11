@@ -551,7 +551,8 @@
         "report": "eval/datasets/questions_501_negative_audit.json",
         "method": "case-insensitive phrase scan with ASCII token boundaries",
         "questions_with_direct_match": 0,
-        "audited_at": "2026-07-11T07:59:53.496215+00:00"
+        "audited_at": "2026-07-11T07:59:53.496215+00:00",
+        "dense_top3_manual_review": "20/20 passed; 0 directly relevant top-3 results"
       }
     },
     "test": {
@@ -595,7 +596,8 @@
         "report": "eval/datasets/questions_501_negative_audit.json",
         "method": "case-insensitive phrase scan with ASCII token boundaries",
         "questions_with_direct_match": 0,
-        "audited_at": "2026-07-11T07:59:53.496215+00:00"
+        "audited_at": "2026-07-11T07:59:53.496215+00:00",
+        "dense_top3_manual_review": "20/20 passed; 0 directly relevant top-3 results"
       }
     }
   },

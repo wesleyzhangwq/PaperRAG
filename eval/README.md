@@ -5,6 +5,10 @@
 ```
 eval/
 ├── datasets/
+│   ├── mysql_papers_501_20260711.json # MySQL 501 篇 / 54,467 chunks 的证据快照
+│   ├── questions_501_dev_50.jsonl     # 仅用于参数选择的开发集
+│   ├── questions_501_test_200.jsonl   # paper-disjoint 冻结测试集
+│   ├── questions_501_manifest.json    # 语料、切分、hash 与负例审计清单
 │   ├── qdrant_papers_100_20260708.json # 从当前 Qdrant collection 导出的对齐语料
 │   ├── questions_v2.jsonl       # 旧版评测问题集
 │   └── questions_v3_200.jsonl   # 200 题纯 RAG 评测集
@@ -14,6 +18,7 @@ eval/
 │   ├── gen_questions.py         # LLM 生成评测问题
 │   ├── repair_questions.py      # 修复 fallback 样式的低质量生成题
 │   ├── repair_agentic_compare_run.py # 定点补跑中断的端到端对照行并重算汇总
+│   ├── compare_rag_runs.py     # 成对 bootstrap 置信区间与 win/tie/loss
 │   └── ablation.py              # 参数消融实验（旧版检索评测）
 ├── run_eval.py                  # 主评测脚本（端到端）
 ├── run_retrieval_eval.py        # 纯检索评测（不调 LLM 生成）
@@ -197,6 +202,34 @@ python ../eval/scripts/ablation.py --all --skip-reingest
 ---
 
 ## 当前纯 RAG 评测结果
+
+当前权威结果已迁移到 501 篇 MySQL 事实语料：Qdrant 与 MySQL 精确对齐为 54,467 chunks，使用 50 题开发集选参，并在 paper-disjoint 的 200 题冻结测试集（180 正例、20 经审计负例）上比较可信 dense-only baseline 与 tuned hybrid。完整方法、消融、逐题型结果、bootstrap 区间和简历安全口径见：
+
+- `eval/results/rag-501/REPORT.md`
+- `eval/results/rag-501/test-dense-k20-dedup5/`
+- `eval/results/rag-501/test-hybrid-a0.5-o4-k20-dedup5/`
+- `eval/results/rag-501/test-comparison/`
+
+冻结测试核心结果：Hit@5 0.8222 -> 0.8500，Recall@5 0.7370 -> 0.7531，Context chunk precision 0.2192 -> 0.2407（相对 +9.84%，成对 bootstrap 95% CI 为 [+0.0013, +0.0417]），P90 0.390s -> 0.418s。NDCG@5 仅 0.7037 -> 0.7063，不能表述为显著排序提升。
+
+```bash
+# dense-only frozen test
+HYBRID_RETRIEVAL_ENABLED=false CACHE_RETRIEVAL_ENABLED=false \
+  backend/.venv/bin/python eval/run_rag_eval.py \
+  --dataset eval/datasets/questions_501_test_200.jsonl \
+  --run-id test-dense-k20-dedup5 --output-dir eval/results/rag-501 \
+  --retrieval-top-k 20 --context-k 5 --context-strategy paper_dedup
+
+# development-selected hybrid frozen test
+HYBRID_RETRIEVAL_ENABLED=true HYBRID_ALPHA=0.5 \
+HYBRID_OVERSAMPLE=4 HYBRID_MAX_FETCH=96 CACHE_RETRIEVAL_ENABLED=false \
+  backend/.venv/bin/python eval/run_rag_eval.py \
+  --dataset eval/datasets/questions_501_test_200.jsonl \
+  --run-id test-hybrid-a0.5-o4-k20-dedup5 --output-dir eval/results/rag-501 \
+  --retrieval-top-k 20 --context-k 5 --context-strategy paper_dedup
+```
+
+## 历史 100 篇纯 RAG 评测结果
 
 同一 runner、同一批 200 题（180 正例、20 个 negative/out-of-corpus）、同一语料 payload。评测不经过 LangGraph Agent，只测纯 RAG 的检索排序与 top-k 上下文质量。
 

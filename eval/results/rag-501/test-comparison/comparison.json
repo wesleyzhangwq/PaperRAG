@@ -1,0 +1,85 @@
+{
+  "question_count": 200,
+  "bootstrap_samples": 10000,
+  "seed": 20260711,
+  "metrics": [
+    {
+      "metric": "ndcg_at_5",
+      "count": 180,
+      "baseline_mean": 0.703656,
+      "candidate_mean": 0.706307,
+      "mean_delta": 0.002651,
+      "relative_delta_pct": 0.38,
+      "ci95_low": -0.025041,
+      "ci95_high": 0.032202,
+      "wins": 15,
+      "ties": 150,
+      "losses": 15
+    },
+    {
+      "metric": "recall_at_5",
+      "count": 180,
+      "baseline_mean": 0.736951,
+      "candidate_mean": 0.753062,
+      "mean_delta": 0.016111,
+      "relative_delta_pct": 2.19,
+      "ci95_low": -0.010556,
+      "ci95_high": 0.043333,
+      "wins": 9,
+      "ties": 168,
+      "losses": 3
+    },
+    {
+      "metric": "mrr",
+      "count": 180,
+      "baseline_mean": 0.738519,
+      "candidate_mean": 0.741111,
+      "mean_delta": 0.002593,
+      "relative_delta_pct": 0.35,
+      "ci95_low": -0.030093,
+      "ci95_high": 0.037593,
+      "wins": 11,
+      "ties": 156,
+      "losses": 13
+    },
+    {
+      "metric": "context_chunk_precision",
+      "count": 180,
+      "baseline_mean": 0.219167,
+      "candidate_mean": 0.240741,
+      "mean_delta": 0.021574,
+      "relative_delta_pct": 9.84,
+      "ci95_low": 0.001294,
+      "ci95_high": 0.041667,
+      "wins": 25,
+      "ties": 148,
+      "losses": 7
+    },
+    {
+      "metric": "context_recall",
+      "count": 180,
+      "baseline_mean": 0.736951,
+      "candidate_mean": 0.753062,
+      "mean_delta": 0.016111,
+      "relative_delta_pct": 2.19,
+      "ci95_low": -0.009722,
+      "ci95_high": 0.042778,
+      "wins": 9,
+      "ties": 168,
+      "losses": 3
+    },
+    {
+      "metric": "latency_s",
+      "count": 200,
+      "baseline_mean": 0.358089,
+      "candidate_mean": 0.378974,
+      "mean_delta": 0.020885,
+      "relative_delta_pct": 5.83,
+      "ci95_low": 0.000262,
+      "ci95_high": 0.044541,
+      "wins": 76,
+      "ties": 0,
+      "losses": 124
+    }
+  ]
+}

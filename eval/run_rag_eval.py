@@ -95,11 +95,17 @@ def _tokenize(text: str) -> list[str]:
 
 
 def _paper_text(paper: dict) -> str:
+    evidence_text = " ".join(
+        str(chunk.get("text") or "")
+        for chunk in (paper.get("evidence_chunks") or [])
+        if isinstance(chunk, dict)
+    )
     return " ".join(
         str(bit or "")
         for bit in (
             paper.get("title"),
             paper.get("abstract"),
+            evidence_text,
             paper.get("primary_category"),
             " ".join(paper.get("categories") or []),
         )
@@ -136,7 +142,12 @@ def lexical_paper_retrieve(
         paper = papers[idx]
         title = str(paper.get("title") or "")
         abstract = str(paper.get("abstract") or "")
-        content = redact_sensitive_text(f"{title}\n{abstract}".strip())
+        evidence = "\n".join(
+            str(chunk.get("text") or "")
+            for chunk in (paper.get("evidence_chunks") or [])
+            if isinstance(chunk, dict) and chunk.get("text")
+        )
+        content = redact_sensitive_text(f"{title}\n{abstract}\n{evidence}".strip())
         metadata = {
             "paper_id": str(paper.get("paper_id") or ""),
             "title": title,

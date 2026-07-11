@@ -129,6 +129,46 @@ def test_load_lexical_corpus_and_paper_bm25_retrieve(tmp_path) -> None:
     assert chunks[0]["snippet"].startswith("Graph Retrieval")
 
 
+def test_lexical_retrieve_indexes_and_returns_representative_evidence(tmp_path) -> None:
+    corpus = tmp_path / "papers.json"
+    corpus.write_text(
+        json.dumps(
+            [
+                {
+                    "paper_id": "A",
+                    "title": "Generic Research Paper",
+                    "abstract": "",
+                    "primary_category": "cs.IR",
+                    "evidence_chunks": [
+                        {
+                            "chunk_id": "A::7",
+                            "text": "quasarneedle evidence describes citation expansion",
+                        }
+                    ],
+                },
+                {
+                    "paper_id": "B",
+                    "title": "Another Generic Paper",
+                    "abstract": "",
+                    "primary_category": "cs.IR",
+                    "evidence_chunks": [
+                        {"chunk_id": "B::2", "text": "unrelated visual segmentation"}
+                    ],
+                },
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    papers = load_lexical_corpus(corpus)
+    results = lexical_paper_retrieve("quasarneedle", papers, top_k=1)
+    chunks = build_retrieved_chunks(results)
+
+    assert chunks[0]["paper_id"] == "A"
+    assert "quasarneedle evidence" in chunks[0]["snippet"]
+
+
 def test_postprocess_chunks_can_dedupe_by_paper() -> None:
     chunks = [
         {"rank": 1, "paper_id": "A", "score": 0.9, "snippet": "alpha"},

@@ -29,6 +29,8 @@ from eval.scripts.gen_questions import (  # noqa: E402
     _fallback_single_paper_question,
     _fallback_trend_question,
     _get_llm,
+    evidence_chunk_ids_for_papers,
+    paper_evidence_excerpt,
 )
 
 FALLBACK_MARKERS = (
@@ -80,8 +82,11 @@ def _trend_topic(question: dict) -> str:
 
 def _apply_result(question: dict, result: dict, *, fallback: tuple) -> dict:
     out = dict(question)
-    out["query"] = result.get("question") or fallback[0]
-    out["reference_answer"] = result.get("reference_answer") or fallback[1]
+    generated_question = str(result.get("question") or "").strip()
+    generated_answer = str(result.get("reference_answer") or "").strip()
+    out["query"] = generated_question or fallback[0]
+    out["reference_answer"] = generated_answer or fallback[1]
+    out["generation_status"] = "llm" if generated_question and generated_answer else "fallback"
     return out
 
 
@@ -98,7 +103,7 @@ def repair_question(llm: ChatOpenAI, question: dict, papers: dict[str, dict]) ->
             paper_id=paper["paper_id"],
             title=paper["title"],
             category=paper["primary_category"],
-            abstract=str(paper.get("abstract") or "")[:900],
+            evidence=paper_evidence_excerpt(paper),
         )
         fallback = _fallback_single_paper_question(paper, "concept_locate")
     elif qtype == "method_detail":
@@ -107,7 +112,7 @@ def repair_question(llm: ChatOpenAI, question: dict, papers: dict[str, dict]) ->
             paper_id=paper["paper_id"],
             title=paper["title"],
             category=paper["primary_category"],
-            abstract=str(paper.get("abstract") or "")[:900],
+            evidence=paper_evidence_excerpt(paper),
         )
         fallback = _fallback_single_paper_question(paper, "method_detail")
     elif qtype == "fact_extract":
@@ -116,7 +121,7 @@ def repair_question(llm: ChatOpenAI, question: dict, papers: dict[str, dict]) ->
             paper_id=paper["paper_id"],
             title=paper["title"],
             category=paper["primary_category"],
-            abstract=str(paper.get("abstract") or "")[:900],
+            evidence=paper_evidence_excerpt(paper),
         )
         fallback = _fallback_single_paper_question(paper, "fact_extract")
     elif qtype == "comparison":
@@ -126,16 +131,16 @@ def repair_question(llm: ChatOpenAI, question: dict, papers: dict[str, dict]) ->
         prompt = COMPARISON_PROMPT.format(
             paper_id_a=a["paper_id"],
             title_a=a["title"],
-            abstract_a=str(a.get("abstract") or "")[:650],
+            evidence_a=paper_evidence_excerpt(a, max_chars=3000),
             paper_id_b=b["paper_id"],
             title_b=b["title"],
-            abstract_b=str(b.get("abstract") or "")[:650],
+            evidence_b=paper_evidence_excerpt(b, max_chars=3000),
         )
         fallback = _fallback_comparison_question(a, b)
     elif qtype == "trend_synthesis":
         topic = _trend_topic(question)
         papers_list = "\n".join(
-            f"- [{p['paper_id']}] {p['title']}: {str(p.get('abstract') or '')[:320]}"
+            f"- [{p['paper_id']}] {p['title']}: {paper_evidence_excerpt(p, max_chars=700)}"
             for p in expected_papers[:8]
         )
         prompt = TREND_PROMPT.format(topic=topic, papers_list=papers_list)
@@ -148,7 +153,9 @@ def repair_question(llm: ChatOpenAI, question: dict, papers: dict[str, dict]) ->
     except Exception as exc:
         print(f"  keep {question['qid']}: {exc}", file=sys.stderr)
         result = {}
-    return _apply_result(question, result, fallback=fallback)
+    repaired = _apply_result(question, result, fallback=fallback)
+    repaired["evidence_chunk_ids"] = evidence_chunk_ids_for_papers(expected_papers)
+    return repaired
 
 
 def main() -> int:

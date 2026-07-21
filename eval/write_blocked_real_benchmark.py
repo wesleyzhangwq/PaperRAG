@@ -145,7 +145,9 @@ def main() -> int:
     parser.add_argument("--run-id", required=True)
     parser.add_argument(
         "--dataset",
-        default=str(PROJECT_ROOT / "eval" / "datasets" / "questions_v3_200.jsonl"),
+        default=str(
+            PROJECT_ROOT / "eval" / "datasets" / "questions_501_test_200.jsonl"
+        ),
     )
     parser.add_argument(
         "--pricing-catalog",

@@ -55,6 +55,16 @@ def _git_snapshot() -> dict[str, Any]:
     }
 
 
+def _clean_git_snapshot() -> dict[str, Any]:
+    snapshot = _git_snapshot()
+    if snapshot["dirty"]:
+        raise RuntimeError(
+            "Refusing to generate production evidence from a dirty worktree; "
+            "commit the runner, configuration, and dataset first."
+        )
+    return snapshot
+
+
 def _empty_task_metrics() -> dict[str, Any]:
     empty_latency = {"n": 0, "p50": None, "p90": None, "p95": None, "mean": None}
     return {
@@ -146,6 +156,7 @@ def main() -> int:
         default=str(PROJECT_ROOT / "eval" / "results" / "production"),
     )
     args = parser.parse_args()
+    git_snapshot = _clean_git_snapshot()
 
     dataset_path = Path(args.dataset)
     catalog_path = Path(args.pricing_catalog)
@@ -174,7 +185,7 @@ def main() -> int:
         "blocked_at": timestamp,
         "finished_at": timestamp,
         "entrypoint_if_unblocked": "eval/run_agentic_rag_eval.py",
-        "git": _git_snapshot(),
+        "git": git_snapshot,
         "dataset": str(dataset_path),
         "dataset_sha256": _sha256_file(dataset_path),
         "sample_count": 0,

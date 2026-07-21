@@ -282,6 +282,16 @@ def _git_snapshot() -> dict[str, Any]:
     return {"commit": run("rev-parse", "HEAD"), "dirty": bool(status), "dirty_entry_count": len(status)}
 
 
+def _clean_git_snapshot() -> dict[str, Any]:
+    snapshot = _git_snapshot()
+    if snapshot["dirty"]:
+        raise RuntimeError(
+            "Refusing to generate production evidence from a dirty worktree; "
+            "commit the runner, configuration, and dataset first."
+        )
+    return snapshot
+
+
 def _scenario_hash() -> str:
     serializable = [
         {
@@ -538,6 +548,7 @@ def main() -> int:
         default=str(PROJECT_ROOT / "eval" / "results" / "production"),
     )
     args = parser.parse_args()
+    git_snapshot = _clean_git_snapshot()
     run_id = args.run_id or f"failure-injection-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     run_dir = Path(args.output_dir) / run_id
     if run_dir.exists() and any(run_dir.iterdir()):
@@ -571,7 +582,7 @@ def main() -> int:
         "started_at": started_at,
         "finished_at": datetime.now(timezone.utc).isoformat(),
         "entrypoint": "app.agent.graph.run_agent_eval_sync",
-        "git": _git_snapshot(),
+        "git": git_snapshot,
         "dataset": "embedded deterministic failure scenarios",
         "dataset_sha256": _scenario_hash(),
         "sample_count": len(rows),

@@ -193,7 +193,7 @@ PYTHONPATH=. backend/.venv/bin/python eval/run_agentic_rag_eval.py \
   --billing-origin minimax_paygo
 ```
 
-每次生产化运行写入独立版本目录，并保留四个规范化产物：`manifest.json`、`per_question.jsonl`、`summary.json`、`report.md`。Manifest 记录 commit/dirty、数据集 hash、样本数、provider/model、非敏感配置、并发/预热/超时、价格目录版本、命令、时间与运行环境；不得写入 API key、完整 endpoint、prompt 或 provider 私有推理。
+每次生产化运行写入独立版本目录，并保留四个规范化产物：`manifest.json`、`per_question.jsonl`、`summary.json`、`report.md`。两个生产证据入口默认拒绝在脏工作树中生成报告；必须先提交 runner、配置和数据集，随后 manifest 才会记录 `dirty=false` 的可追溯 commit。Manifest 还记录数据集 hash、样本数、provider/model、非敏感配置、并发/预热/超时、价格目录版本、命令、时间与运行环境；不得写入 API key、完整 endpoint、prompt 或 provider 私有推理。
 
 故障注入覆盖本地空结果/异常、arXiv 与 web 不可用、planner/sufficiency 不可解析、LLM timeout、groundedness 重新检索/重新生成、补检索预算耗尽，以及预期的终态数据库失败。其恢复率定义为 `fallback_recovery_rate = fallback_recovered / fallback_attempted`，其中 `fallback_recovered` 还必须满足上述严格 `task_success`。
 

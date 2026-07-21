@@ -6,6 +6,7 @@ import pytest
 
 from eval.agentic_compare_metrics import summarize_answer_cases
 from eval.costing import load_pricing_catalog
+from eval import run_failure_injection_eval, write_blocked_real_benchmark
 from eval.run_failure_injection_eval import SCENARIOS, run_scenario
 
 
@@ -42,3 +43,19 @@ def test_failure_suite_aggregate_contract(failure_rows: dict[str, dict]) -> None
     assert metrics["fallback_recovered_count"] == 7
     assert metrics["fallback_recovery_rate"] == pytest.approx(7 / 9, abs=1e-4)
     assert metrics["terminal_failure_rate"] == 0.1
+
+
+@pytest.mark.parametrize(
+    "module", [run_failure_injection_eval, write_blocked_real_benchmark]
+)
+def test_production_evidence_refuses_dirty_worktree(
+    monkeypatch: pytest.MonkeyPatch, module: object
+) -> None:
+    monkeypatch.setattr(
+        module,
+        "_git_snapshot",
+        lambda: {"commit": "abc123", "dirty": True, "dirty_entry_count": 1},
+    )
+
+    with pytest.raises(RuntimeError, match="dirty worktree"):
+        module._clean_git_snapshot()

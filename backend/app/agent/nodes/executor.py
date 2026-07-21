@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.agent.stages import ACTION_LABELS
 from app.agent.state import AgentState, StepTrace
+from app.agent.telemetry import record_fallback
 from app.agent.streaming import emit
 from app.schemas.chat import ChatFilter
 from app.services.retriever import retrieve
@@ -17,6 +18,7 @@ from app.tools.retrieve_arxiv import retrieve_arxiv_tool
 from app.tools.search_web import search_web_tool
 from app.tools.paper_detail import get_paper_detail
 from app.tools.paper_chunks import get_paper_chunks
+from app.utils.citations import extract_arxiv_ids
 
 
 def _user_query_from_state(state: AgentState) -> str:
@@ -107,8 +109,11 @@ def _run_query_rewrite(params: dict, intent: dict, fallback_query: str) -> list[
 
 def _parse_arxiv_to_documents(raw_result: str) -> list[Document]:
     """Parse arXiv tool output into Document objects for context."""
+    raw_text = (raw_result or "").strip()
+    if not raw_text or raw_text.lower().startswith("no papers found on arxiv"):
+        return []
     docs = []
-    for block in raw_result.split("---"):
+    for block in raw_text.split("---"):
         block = block.strip()
         if not block:
             continue
@@ -117,17 +122,21 @@ def _parse_arxiv_to_documents(raw_result: str) -> list[Document]:
         lines = block.split("\n")
         content_lines = []
         for line in lines:
-            if line.startswith("ID: "):
+            citation_ids = extract_arxiv_ids(line)
+            if citation_ids:
+                paper_id = citation_ids[0]
+            elif line.startswith("ID: "):
                 paper_id = line[4:].strip()
-            elif line.startswith("Title: "):
-                title = line[7:].strip()
+            elif line.lower().startswith("title: "):
+                title = line.split(":", 1)[1].strip()
             else:
                 content_lines.append(line)
         content = "\n".join(content_lines).strip() or block
-        docs.append(Document(
-            page_content=content,
-            metadata={"paper_id": paper_id, "title": title, "source": "arxiv_api"},
-        ))
+        if paper_id:
+            docs.append(Document(
+                page_content=content,
+                metadata={"paper_id": paper_id, "title": title, "source": "arxiv_api"},
+            ))
     return docs
 
 
@@ -152,7 +161,19 @@ def _web_result_unavailable(raw_result: str) -> bool:
         "web search unavailable",
         "web search is not configured",
         "no web results found",
+        "evaluation external web intentionally disabled",
     ))
+
+
+def _web_result_status(raw_result: str) -> str:
+    text = (raw_result or "").strip().lower()
+    if text.startswith("web search unavailable"):
+        return "service_unavailable"
+    if text.startswith(("web search is not configured", "evaluation external web intentionally disabled")):
+        return "intentional_disabled"
+    if text.startswith("no web results found") or not text:
+        return "no_results"
+    return "ok"
 
 
 def executor_node(state: AgentState, *, db: Session) -> dict:
@@ -178,11 +199,29 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
     output_summary = ""
     output_detail: dict = {}
     state_patch: dict = {}
+    telemetry_patch: dict | None = None
     trace_params = dict(params)
     trace_reason = step.get("reason", "")
 
     if action == "retrieve_local":
-        docs_scores, meta = _run_retrieve_local(params, fallback_query)
+        try:
+            docs_scores, meta = _run_retrieve_local(params, fallback_query)
+        except Exception as exc:
+            requested_query = str(params.get("query") or "").strip()
+            meta = {
+                "query_used": requested_query or fallback_query,
+                "requested_query": requested_query,
+                "used_fallback": not requested_query and bool(fallback_query),
+                "top_k": params.get("top_k", 8),
+            }
+            docs_scores = []
+            telemetry_patch = record_fallback(
+                state,
+                failure_class="local_retrieval_exception",
+                stage="retrieve_local",
+                outcome="continue_without_local_results",
+            )
+            output_detail["error"] = type(exc).__name__
         retrieved_docs = [d for d, _ in docs_scores]
         retrieved_paper_ids = _append_unique_paper_ids(retrieved_paper_ids, retrieved_docs)
         new_context, added_count = _append_unique_documents(new_context, retrieved_docs)
@@ -213,9 +252,17 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
             "requested_query": meta["requested_query"],
             "used_fallback": meta["used_fallback"],
             "added": added_count,
+            **({"error": "local_retrieval_exception"} if telemetry_patch else {}),
         }
         if meta["used_fallback"]:
             state_patch["is_fallback"] = True
+        if not docs_scores and telemetry_patch is None:
+            telemetry_patch = record_fallback(
+                state,
+                failure_class="local_retrieval_empty",
+                stage="retrieve_local",
+                outcome="continue_to_sufficiency_gate",
+            )
 
     elif action == "retrieve_arxiv":
         try:
@@ -228,13 +275,28 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
                 "papers": [],
                 "total": 0,
                 "added": 0,
-                "error": f"{type(exc).__name__}: {exc}",
+                "error": type(exc).__name__,
             }
+            telemetry_patch = record_fallback(
+                state,
+                failure_class="arxiv_service_unavailable",
+                stage="retrieve_arxiv",
+                outcome="continue_without_arxiv_results",
+            )
         else:
-            arxiv_docs = _parse_arxiv_to_documents(result)
+            result_text = str(result or "").strip()
+            intentional_disabled = result_text.lower().startswith(
+                "evaluation external arxiv intentionally disabled"
+            )
+            no_results = not result_text or result_text.lower().startswith("no papers found on arxiv")
+            arxiv_docs = [] if intentional_disabled or no_results else _parse_arxiv_to_documents(result_text)
             retrieved_paper_ids = _append_unique_paper_ids(retrieved_paper_ids, arxiv_docs)
             new_context, added_count = _append_unique_documents(new_context, arxiv_docs)
-            output_summary = f"arXiv: {len(arxiv_docs)} papers added"
+            output_summary = (
+                "arXiv intentionally disabled"
+                if intentional_disabled
+                else f"arXiv: {len(arxiv_docs)} papers added"
+            )
             output_detail = {
                 "papers": [
                     {"paper_id": (d.metadata or {}).get("paper_id", ""),
@@ -243,27 +305,60 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
                 ],
                 "total": len(arxiv_docs),
                 "added": added_count,
+                "status": "intentional_disabled" if intentional_disabled else ("no_results" if no_results else "ok"),
             }
 
     elif action == "search_web":
-        result = search_web_tool.invoke(params)
+        try:
+            result = search_web_tool.invoke(params)
+        except Exception as exc:
+            result = "Web search unavailable"
+            telemetry_patch = record_fallback(
+                state,
+                failure_class="web_service_unavailable",
+                stage="search_web",
+                outcome="continue_without_web_results",
+            )
         web_docs = _parse_web_to_documents(result)
+        web_status = _web_result_status(result)
         new_context, added_count = _append_unique_documents(new_context, web_docs)
         if _web_result_unavailable(result):
-            output_summary = "web unavailable" if result.lower().startswith("web search unavailable") else "web: 0 results added"
+            if web_status == "service_unavailable":
+                output_summary = "web unavailable"
+            elif web_status == "intentional_disabled":
+                output_summary = "web intentionally disabled"
+            else:
+                output_summary = "web: 0 results added"
         else:
             output_summary = f"web: {len(web_docs)} results added"
         output_detail = {
             "snippets": [(d.page_content or "")[:200] for d in web_docs[:3]],
             "total": len(web_docs),
             "added": added_count,
+            "status": web_status,
         }
-        if _web_result_unavailable(result):
-            output_detail["error"] = result
+        if web_status == "service_unavailable":
+            output_detail["error"] = "web_service_unavailable"
+            if telemetry_patch is None:
+                telemetry_patch = record_fallback(
+                    state,
+                    failure_class="web_service_unavailable",
+                    stage="search_web",
+                    outcome="continue_without_web_results",
+                )
 
     elif action == "query_rewrite":
         intent = state.get("intent") or {}
-        queries = _run_query_rewrite(params, intent, fallback_query)
+        try:
+            queries = _run_query_rewrite(params, intent, fallback_query)
+        except Exception:
+            queries = [fallback_query] if fallback_query else []
+            telemetry_patch = record_fallback(
+                state,
+                failure_class="query_rewrite_failure",
+                stage="query_rewrite",
+                outcome="reuse_original_query",
+            )
         output_summary = f"rewrote into {len(queries)} sub-queries"
         output_detail = {"queries": queries}
         # Inject rewritten queries into subsequent retrieve_local steps
@@ -317,4 +412,6 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
         "step_traces": state["step_traces"] + [trace],
     }
     result.update(state_patch)
+    if telemetry_patch is not None:
+        result["fallback_telemetry"] = telemetry_patch
     return result

@@ -6,6 +6,7 @@ import json
 from langchain_openai import ChatOpenAI
 
 from app.core.config import get_settings
+from app.observability.llm_usage import invoke_with_usage
 
 _REWRITE_PROMPT = """你是一个学术检索查询优化器。根据用户的原始问题和意图分析，生成 1-3 个改写后的检索查询。
 
@@ -29,6 +30,7 @@ def _get_llm() -> ChatOpenAI:
         api_key=s.llm_api_key,
         temperature=0.3,
         max_retries=2,
+        request_timeout=120,
     )
 
 
@@ -36,7 +38,14 @@ def rewrite_query(original_query: str, intent: dict) -> list[str]:
     """Rewrite and decompose a query into 1-3 optimized sub-queries for retrieval."""
     llm = _get_llm()
     prompt = _REWRITE_PROMPT.format(query=original_query, intent=json.dumps(intent, ensure_ascii=False))
-    response = llm.invoke(prompt)
+    settings = get_settings()
+    response = invoke_with_usage(
+        llm,
+        prompt,
+        node="query_rewrite",
+        model=settings.planner_model or settings.llm_model,
+        api_base=settings.llm_api_base,
+    )
     try:
         queries = json.loads(response.content)
         if isinstance(queries, list) and all(isinstance(q, str) for q in queries):

@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.agent.stages import ACTION_LABELS
 from app.agent.state import AgentState
+from app.agent.telemetry import finalize_fallback_telemetry
 from app.models.paper import Paper
 
 
@@ -391,6 +392,19 @@ def presentation_node(state: AgentState, *, db: Session) -> dict:
     )
     confidence_level, confidence_reason = _compute_confidence(state, len(source_cards))
     steps = _build_steps_from_traces(state)
+    telemetry = finalize_fallback_telemetry(state)
+    guard_result = state.get("guard_result") or {}
+    sufficiency = state.get("sufficiency_result") or {}
+    if not guard_result.get("allowed", True):
+        response_mode = "refuse"
+    elif state.get("synthesis_failed") or sufficiency.get("parse_failed"):
+        response_mode = "degraded"
+    elif not sufficiency.get("sufficient", False) and (
+        state.get("degraded") or not source_cards
+    ):
+        response_mode = "insufficient"
+    else:
+        response_mode = "answer"
 
     presentation = {
         "answer": answer,
@@ -399,5 +413,9 @@ def presentation_node(state: AgentState, *, db: Session) -> dict:
         "sources": source_cards,
         "retrieval_summary": retrieval_summary,
         "steps": steps,
+        "degraded": bool(state.get("degraded")),
+        "removed_citations": list(state.get("removed_citations") or []),
+        "fallback_telemetry": telemetry,
+        "response_mode": response_mode,
     }
-    return {"presentation": presentation}
+    return {"presentation": presentation, "fallback_telemetry": telemetry}

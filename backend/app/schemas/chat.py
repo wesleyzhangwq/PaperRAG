@@ -39,10 +39,17 @@ class Source(BaseModel):
 
 class ChatResponse(BaseModel):
     answer: str
-    sources: list[Source] = []
+    sources: list[Source] = Field(default_factory=list)
     used_chunks: int = 0
     step_traces: Optional[list[dict]] = None
     reflection_result: Optional[dict] = None
+    presentation: Optional[dict] = None
+    sufficiency_result: Optional[dict] = None
+    removed_citations: list[str] = Field(default_factory=list)
+    synthesis_context_paper_ids: list[str] = Field(default_factory=list)
+    fallback_telemetry: Optional[dict] = None
+    llm_usage: list[dict] = Field(default_factory=list)
+    degraded: bool = False
 
 
 class PaperSummary(BaseModel):

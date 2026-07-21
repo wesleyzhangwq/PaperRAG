@@ -5,10 +5,12 @@ from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
+from langchain_core.messages import AIMessage, AIMessageChunk
 
 from app.main import app
 from app.db.mysql import get_db
 from app.schemas.chat import ChatResponse, Source
+from app.observability.llm_usage import invoke_with_usage, stream_with_usage
 
 
 def _mock_db():
@@ -77,6 +79,81 @@ def test_chat_stream_uses_astream_events_and_thread_id():
     assert "event: stage" in resp.text
     assert "event: done" in resp.text
     assert seen_config["configurable"]["thread_id"] == "conv-stream"
+
+
+def test_chat_stream_aggregates_safe_usage_in_done_event():
+    class UsageLlm:
+        def invoke(self, _prompt):
+            return AIMessage(
+                content="ok",
+                usage_metadata={"input_tokens": 5, "output_tokens": 2, "total_tokens": 7},
+            )
+
+        def stream(self, _prompt):
+            yield AIMessageChunk(content="answer")
+            yield AIMessageChunk(
+                content="",
+                usage_metadata={"input_tokens": 9, "output_tokens": 3, "total_tokens": 12},
+            )
+
+    llm = UsageLlm()
+
+    class FakeGraph:
+        async def astream_events(self, initial_state, config, version="v2"):
+            invoke_with_usage(
+                llm,
+                "PRIVATE PROMPT MUST NOT LEAK",
+                node="planner",
+                model="MiniMax-M2.7",
+                api_base="https://api.minimax.io/v1",
+            )
+            list(
+                stream_with_usage(
+                    llm,
+                    "PRIVATE PROMPT MUST NOT LEAK",
+                    node="synthesis",
+                    model="MiniMax-M2.7",
+                    api_base="https://api.minimax.io/v1",
+                )
+            )
+            yield {
+                "event": "on_chain_stream",
+                "name": "LangGraph",
+                "data": {
+                    "chunk": {
+                        "presentation": {
+                            "final_answer": "answer",
+                            "presentation": {"response_mode": "answer"},
+                            "fallback_telemetry": {"fallback_attempted": False},
+                        }
+                    }
+                },
+            }
+
+    @asynccontextmanager
+    async def fake_checkpointer():
+        yield None
+
+    with (
+        patch("app.routers.chat.build_agent_graph", return_value=FakeGraph()),
+        patch("app.routers.chat.open_async_checkpointer", fake_checkpointer),
+        patch("app.routers.chat.SessionLocal", return_value=MagicMock()),
+        patch("app.routers.chat._ensure_conversation"),
+        patch("app.routers.chat._load_history", return_value=[]),
+        patch("app.routers.chat._persist_messages"),
+    ):
+        resp = client.post(
+            "/chat/stream",
+            json={"query": "hello", "conversation_id": "usage-stream"},
+        )
+
+    done_block = next(block for block in resp.text.split("\n\n") if block.startswith("event: done"))
+    payload = json.loads(next(line[6:] for line in done_block.splitlines() if line.startswith("data: ")))
+    assert payload["llm_usage"]["call_count"] == 2
+    assert [call["node"] for call in payload["llm_usage"]["calls"]] == ["planner", "synthesis"]
+    assert payload["llm_usage"]["input_tokens"] == 14
+    assert "PRIVATE PROMPT" not in resp.text
+    assert "api.minimax.io" not in resp.text
 
 
 def test_conversation_messages_expose_persisted_elapsed_ms():

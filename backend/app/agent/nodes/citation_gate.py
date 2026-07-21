@@ -13,7 +13,6 @@ The answer that leaves this node contains only citations the UI can prove.
 """
 from __future__ import annotations
 
-import re
 import time
 
 from sqlalchemy.orm import Session
@@ -22,8 +21,7 @@ from app.agent.stages import stage
 from app.agent.state import AgentState, StepTrace
 from app.models.paper import Paper
 from app.schemas.chat import Source
-
-_CITATION_RE = re.compile(r"\[arxiv:([0-9]{4}\.[0-9]{4,6})\]")
+from app.utils.citations import extract_arxiv_ids, strip_disallowed_citations
 
 
 def _is_visible(paper: Paper) -> bool:
@@ -37,23 +35,26 @@ def citation_gate_node(state: AgentState, *, db: Session) -> dict:
     t0 = time.perf_counter()
     with stage("citation") as s:
         answer = state.get("final_answer") or ""
-        context_ids = {
-            (d.metadata or {}).get("paper_id")
-            for d in state.get("retrieval_context") or []
-            if (d.metadata or {}).get("paper_id")
-        }
+        synthesis_ids = state.get("synthesis_context_paper_ids")
+        if synthesis_ids is not None:
+            context_ids = {str(pid).strip() for pid in synthesis_ids if str(pid).strip()}
+        else:
+            # Compatibility fallback for checkpoints written before synthesis
+            # context IDs were persisted.
+            context_ids = {
+                (d.metadata or {}).get("paper_id")
+                for d in state.get("retrieval_context") or []
+                if (d.metadata or {}).get("paper_id")
+            }
 
-        cited_ids: list[str] = []
-        for m in _CITATION_RE.finditer(answer):
-            pid = m.group(1)
-            if pid not in cited_ids:
-                cited_ids.append(pid)
+        cited_ids = extract_arxiv_ids(answer)
 
         sources: list[Source] = []
-        removed: list[str] = []
+        allowed_ids: set[str] = set()
         for pid in cited_ids:
             paper = db.query(Paper).filter(Paper.paper_id == pid).one_or_none()
-            if paper is not None and _is_visible(paper):
+            if pid in context_ids and paper is not None and _is_visible(paper):
+                allowed_ids.add(pid)
                 sources.append(Source(
                     paper_id=pid,
                     title=paper.title or "",
@@ -63,7 +64,8 @@ def citation_gate_node(state: AgentState, *, db: Session) -> dict:
                     doi=paper.doi,
                     arxiv_url=f"https://arxiv.org/abs/{pid}",
                 ))
-            elif pid in context_ids:
+            elif pid in context_ids and paper is None:
+                allowed_ids.add(pid)
                 # In context (e.g. fresh arXiv API result) but not ingested into
                 # MySQL yet — keep the citation, build a minimal source.
                 sources.append(Source(
@@ -76,12 +78,13 @@ def citation_gate_node(state: AgentState, *, db: Session) -> dict:
                     arxiv_url=f"https://arxiv.org/abs/{pid}",
                 ))
             else:
-                # Unresolvable citation: strip the marker from the answer.
-                removed.append(pid)
-                answer = answer.replace(f"[arxiv:{pid}]", "")
+                continue
+
+        # Strip every unsupported syntax variant (bracketed, whitespace, URL)
+        # through the same canonical parser used by groundedness and eval.
+        answer, removed = strip_disallowed_citations(answer, allowed_ids)
 
         if removed:
-            answer = re.sub(r" {2,}", " ", answer)
             s.warning(
                 f"解析 {len(sources)} 个引用，剔除 {len(removed)} 个无法核实的引用",
                 detail={"resolved": len(sources), "removed": removed},

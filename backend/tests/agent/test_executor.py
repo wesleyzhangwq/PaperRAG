@@ -4,7 +4,7 @@ from langchain_core.documents import Document
 from langchain_core.messages import HumanMessage
 
 from app.agent.state import AgentState, StepSpec
-from app.agent.nodes.executor import executor_node
+from app.agent.nodes.executor import _parse_arxiv_to_documents, executor_node
 
 
 def _base_state(**overrides) -> AgentState:
@@ -148,4 +148,51 @@ def test_executor_retrieve_arxiv_failure_degrades_to_warning_trace():
     assert result["retrieval_context"] == []
     assert result["step_traces"][0]["output_summary"] == "arXiv unavailable"
     assert result["step_traces"][0]["detail"]["total"] == 0
-    assert "arXiv timeout" in result["step_traces"][0]["detail"]["error"]
+    assert result["step_traces"][0]["detail"]["error"] == "RuntimeError"
+    assert "arxiv_service_unavailable" in result["fallback_telemetry"]["failure_classes"]
+
+
+def test_parse_arxiv_tool_native_output_preserves_id_and_title():
+    raw = (
+        "[arxiv:2401.01234v2 | cs.CL | 2024]\n"
+        "title: Native Tool Format\n"
+        "authors: A, B\n"
+        "abstract: Evidence"
+    )
+
+    docs = _parse_arxiv_to_documents(raw)
+
+    assert len(docs) == 1
+    assert docs[0].metadata["paper_id"] == "2401.01234"
+    assert docs[0].metadata["title"] == "Native Tool Format"
+
+
+def test_executor_arxiv_no_results_is_not_a_fallback_failure():
+    state = _base_state(
+        plan=[StepSpec(action="retrieve_arxiv", params={"query": "none"}, reason="test")],
+        plan_step_index=0,
+    )
+    mock_tool = MagicMock()
+    mock_tool.invoke.return_value = "No papers found on arXiv for this query."
+
+    with patch("app.agent.nodes.executor.retrieve_arxiv_tool", mock_tool):
+        result = executor_node(state, db=MagicMock())
+
+    assert result["retrieval_context"] == []
+    assert result["step_traces"][0]["detail"]["status"] == "no_results"
+    assert "fallback_telemetry" not in result
+
+
+def test_executor_intentional_external_disable_is_not_a_fallback_failure():
+    state = _base_state(
+        plan=[StepSpec(action="search_web", params={"query": "fixture"}, reason="test")],
+        plan_step_index=0,
+    )
+    mock_tool = MagicMock()
+    mock_tool.invoke.return_value = "Evaluation external web intentionally disabled."
+
+    with patch("app.agent.nodes.executor.search_web_tool", mock_tool):
+        result = executor_node(state, db=MagicMock())
+
+    assert result["step_traces"][0]["detail"]["status"] == "intentional_disabled"
+    assert "fallback_telemetry" not in result

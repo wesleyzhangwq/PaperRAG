@@ -41,7 +41,9 @@ from app.agent.nodes.route import route_node
 from app.agent.nodes.sufficiency import after_sufficiency, sufficiency_node
 from app.agent.nodes.synthesis import synthesis_node
 from app.agent.state import AgentState
+from app.agent.telemetry import DEFAULT_FALLBACK_TELEMETRY
 from app.core.config import get_settings
+from app.observability.llm_usage import collect_llm_usage, current_collector
 from app.schemas.chat import ChatResponse
 
 
@@ -68,6 +70,8 @@ def route_after_reflection(state: AgentState | dict, max_reflections: int) -> st
     """
     reflection = state.get("reflection_result", {}) or {}
     if reflection.get("passed", True):
+        return "citation_gate"
+    if state.get("degraded"):
         return "citation_gate"
     if state.get("reflection_count", 0) >= max_reflections:
         return "citation_gate"
@@ -212,6 +216,13 @@ def initial_agent_state(messages: list) -> AgentState:
         "sufficiency_result": None,
         "degraded": False,
         "removed_citations": [],
+        "fallback_telemetry": {
+            **DEFAULT_FALLBACK_TELEMETRY,
+            "failure_classes": [],
+            "events": [],
+        },
+        "llm_usage": [],
+        "synthesis_failed": False,
     }
 
 
@@ -239,9 +250,22 @@ def _run_agent_to_state(
     initial_state = initial_agent_state(messages)
 
     config = agent_run_config(thread_id)
-    with open_sync_checkpointer() as checkpointer:
-        graph = build_agent_graph(db, checkpointer=checkpointer)
-        return graph.invoke(initial_state, config=config)
+
+    def invoke_graph() -> dict:
+        with open_sync_checkpointer() as checkpointer:
+            graph = build_agent_graph(db, checkpointer=checkpointer)
+            return graph.invoke(initial_state, config=config)
+
+    collector = current_collector()
+    if collector is not None:
+        start = len(collector.records)
+        result = invoke_graph()
+        result["llm_usage"] = collector.snapshot(start)
+        return result
+    with collect_llm_usage() as run_collector:
+        result = invoke_graph()
+        result["llm_usage"] = run_collector.snapshot()
+        return result
 
 
 def _response_from_state(result: dict) -> ChatResponse:
@@ -258,6 +282,15 @@ def _response_from_state(result: dict) -> ChatResponse:
         ),
         step_traces=step_traces,
         reflection_result=result.get("reflection_result"),
+        presentation=result.get("presentation"),
+        sufficiency_result=result.get("sufficiency_result"),
+        removed_citations=list(result.get("removed_citations") or []),
+        synthesis_context_paper_ids=_unique_paper_ids(
+            result.get("synthesis_context_paper_ids") or []
+        ),
+        fallback_telemetry=result.get("fallback_telemetry"),
+        llm_usage=list(result.get("llm_usage") or []),
+        degraded=bool(result.get("degraded")),
     )
 
 

@@ -8,8 +8,10 @@ from langchain_openai import ChatOpenAI
 from app.agent.prompts.synthesis import SYNTHESIS_PROMPT, SYNTHESIS_WITH_ISSUES_PROMPT
 from app.agent.stages import stage
 from app.agent.state import AgentState, StepTrace
+from app.agent.telemetry import classify_failure, record_fallback
 from app.agent.streaming import emit
 from app.core.config import get_settings
+from app.observability.llm_usage import stream_with_usage
 from app.utils.content_safety import strip_hidden_reasoning
 
 
@@ -54,6 +56,7 @@ def _get_llm(*, streaming: bool = False) -> ChatOpenAI:
         max_retries=2,
         request_timeout=120,
         streaming=streaming,
+        stream_usage=streaming,
     )
 
 
@@ -101,23 +104,45 @@ def synthesis_node(state: AgentState, *, query: str, issues: list[str] | None = 
         chunks: list[str] = []
         reasoning_chunks: list[str] = []
         in_think = False  # state machine for inline <think>...</think> blocks
+        telemetry = None
+        synthesis_failed = False
         emit("answer_start", {"attempt": attempt, "reset": True})
-        for chunk in llm.stream(prompt):
-            # Reasoning models (e.g. MiniMax-M2.7) may expose reasoning tokens
-            # via additional_kwargs.reasoning_content (incremental, OpenAI-style).
-            rk = getattr(chunk, "additional_kwargs", None) or {}
-            rtok = rk.get("reasoning_content") if isinstance(rk, dict) else None
-            if rtok:
-                reasoning_chunks.append(rtok)
-            if chunk.content:
-                chunks.append(chunk.content)
-                # Route inline <think>...</think> tokens to reasoning, not answer.
-                stripped, in_think = _route_token(chunk.content, in_think, reasoning_chunks)
-                if stripped:
-                    emit("token", {"t": stripped})
-
-        answer = strip_hidden_reasoning("".join(chunks))
-        s.done(f"{len(answer)} 字符", detail={"chars": len(answer), "attempt": attempt})
+        settings = get_settings()
+        try:
+            for chunk in stream_with_usage(
+                llm,
+                prompt,
+                node="synthesis",
+                model=getattr(settings, "llm_model", None),
+                api_base=getattr(settings, "llm_api_base", None),
+            ):
+                # Reasoning models (e.g. MiniMax-M2.7) may expose reasoning tokens
+                # via additional_kwargs.reasoning_content (incremental, OpenAI-style).
+                rk = getattr(chunk, "additional_kwargs", None) or {}
+                rtok = rk.get("reasoning_content") if isinstance(rk, dict) else None
+                if rtok:
+                    reasoning_chunks.append(rtok)
+                if chunk.content:
+                    chunks.append(chunk.content)
+                    # Route inline <think>...</think> tokens to reasoning, not answer.
+                    stripped, in_think = _route_token(chunk.content, in_think, reasoning_chunks)
+                    if stripped:
+                        emit("token", {"t": stripped})
+            answer = strip_hidden_reasoning("".join(chunks))
+            s.done(f"{len(answer)} 字符", detail={"chars": len(answer), "attempt": attempt})
+        except Exception as exc:
+            synthesis_failed = True
+            answer = "模型服务暂时不可用，当前无法基于论文证据完成回答。"
+            telemetry = record_fallback(
+                state,
+                failure_class=classify_failure(exc, default="synthesis_llm_failure"),
+                stage="synthesis",
+                outcome="safe_degraded_answer",
+                degraded=True,
+            )
+            emit("answer_start", {"attempt": attempt, "reset": True})
+            emit("token", {"t": answer})
+            s.warning("模型生成失败，已安全降级", detail={"attempt": attempt})
 
     duration = round((time.perf_counter() - t0) * 1000, 2)
     trace = StepTrace(
@@ -129,7 +154,7 @@ def synthesis_node(state: AgentState, *, query: str, issues: list[str] | None = 
         ),
         duration_ms=duration,
     )
-    return {
+    out = {
         "final_answer": answer,
         "synthesis_context_count": len(context_docs),
         "synthesis_context_paper_ids": [
@@ -139,3 +164,12 @@ def synthesis_node(state: AgentState, *, query: str, issues: list[str] | None = 
         ],
         "step_traces": state["step_traces"] + [trace],
     }
+    if synthesis_failed:
+        out.update(
+            {
+                "synthesis_failed": True,
+                "degraded": True,
+                "fallback_telemetry": telemetry,
+            }
+        )
+    return out

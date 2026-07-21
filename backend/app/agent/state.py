@@ -62,3 +62,6 @@ class AgentState(TypedDict, total=False):
     evaluator_result: Optional[dict]        # latest evaluate_docs output
     evaluator_parse_failed: bool            # short-cut flag for confidence calc
     presentation: Optional[dict]            # final structured payload for the UI
+    fallback_telemetry: dict                # structured recovery/failure metrics
+    llm_usage: list[dict]                   # provider-reported per-node token usage
+    synthesis_failed: bool                  # safe terminal for generation-provider errors

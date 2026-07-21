@@ -22,6 +22,7 @@ from app.core.config import get_settings
 from app.db.mysql import SessionLocal, get_db
 from app.models.chat_history import ChatHistory
 from app.models.conversation import Conversation
+from app.observability.llm_usage import collect_llm_usage
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.utils.content_safety import strip_hidden_reasoning
 
@@ -75,6 +76,8 @@ def _persist_messages(
     thinking_traces: list,
     presentation: Optional[dict] = None,
     elapsed_ms: Optional[float] = None,
+    llm_usage: Optional[list[dict]] = None,
+    fallback_telemetry: Optional[dict] = None,
 ) -> None:
     """Persist user message + assistant answer to chat_history.
     Uses a fresh session so it is independent from graph execution."""
@@ -95,6 +98,8 @@ def _persist_messages(
                 "traces": thinking_traces,
                 "presentation": presentation,
                 "elapsed_ms": elapsed_ms,
+                "llm_usage": llm_usage or [],
+                "fallback_telemetry": fallback_telemetry,
             }
             db.add(ChatHistory(
                 conversation_id=conversation_id,
@@ -116,6 +121,42 @@ def _persist_messages(
         traceback.print_exc()
 
 
+def _safe_usage_payload(records: list[dict]) -> dict:
+    """Return usage-only fields suitable for persistence and SSE."""
+    safe_calls = [
+        {
+            key: record.get(key)
+            for key in (
+                "call_index",
+                "node",
+                "provider",
+                "model",
+                "duration_ms",
+                "outcome",
+                "error_class",
+                "usage_status",
+                "usage_source",
+                "input_tokens",
+                "output_tokens",
+                "total_tokens",
+                "cached_read_tokens",
+                "cache_write_tokens",
+            )
+        }
+        for record in records
+    ]
+    all_known = all(call.get("usage_status") == "known" for call in safe_calls)
+    return {
+        "usage_status": "known" if all_known else "unknown",
+        "call_count": len(safe_calls),
+        "input_tokens": sum(int(call.get("input_tokens") or 0) for call in safe_calls) if all_known else None,
+        "output_tokens": sum(int(call.get("output_tokens") or 0) for call in safe_calls) if all_known else None,
+        "cached_read_tokens": sum(int(call.get("cached_read_tokens") or 0) for call in safe_calls) if all_known else None,
+        "cache_write_tokens": sum(int(call.get("cache_write_tokens") or 0) for call in safe_calls) if all_known else None,
+        "calls": safe_calls,
+    }
+
+
 @router.post("", response_model=ChatResponse)
 def chat_sync(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
     """Synchronous chat endpoint. Runs full agent pipeline, returns final result."""
@@ -128,6 +169,14 @@ def chat_sync(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
     db.add(ChatHistory(
         conversation_id=cid, session_id=cid, role="assistant", content=resp.answer,
         sources_json=json.dumps([s.model_dump() if hasattr(s, "model_dump") else s for s in resp.sources], ensure_ascii=False),
+        thinking_json=json.dumps(
+            {
+                "presentation": resp.presentation,
+                "llm_usage": resp.llm_usage,
+                "fallback_telemetry": resp.fallback_telemetry,
+            },
+            ensure_ascii=False,
+        ),
     ))
     db.commit()
     return resp
@@ -166,43 +215,45 @@ async def chat_stream(req: ChatRequest):
 
         graph_db: Session = SessionLocal()
         try:
-            async with open_async_checkpointer() as checkpointer:
-                graph = build_agent_graph(graph_db, checkpointer=checkpointer)
-                graph_events = graph.astream_events(
-                    final_state,
-                    config=agent_run_config(cid),
-                    version="v2",
-                )
-                next_event = asyncio.create_task(graph_events.__anext__())
+            with collect_llm_usage() as usage_collector:
+                async with open_async_checkpointer() as checkpointer:
+                    graph = build_agent_graph(graph_db, checkpointer=checkpointer)
+                    graph_events = graph.astream_events(
+                        final_state,
+                        config=agent_run_config(cid),
+                        version="v2",
+                    )
+                    next_event = asyncio.create_task(graph_events.__anext__())
 
-                try:
-                    while True:
-                        done, _ = await asyncio.wait({next_event}, timeout=HEARTBEAT_INTERVAL)
-                        if not done:
-                            elapsed_ms = round((time.perf_counter() - t_start) * 1000, 0)
-                            yield encode_sse("elapsed", {"ms": elapsed_ms})
-                            continue
+                    try:
+                        while True:
+                            done, _ = await asyncio.wait({next_event}, timeout=HEARTBEAT_INTERVAL)
+                            if not done:
+                                elapsed_ms = round((time.perf_counter() - t_start) * 1000, 0)
+                                yield encode_sse("elapsed", {"ms": elapsed_ms})
+                                continue
 
-                        try:
-                            graph_event = next_event.result()
-                        except StopAsyncIteration:
-                            break
+                            try:
+                                graph_event = next_event.result()
+                            except StopAsyncIteration:
+                                break
 
-                        next_event = asyncio.create_task(graph_events.__anext__())
-                        for sse_event in graph_event_to_sse_events(graph_event, final_state, runtime):
-                            yield encode_sse(sse_event["type"], sse_event.get("data", {}))
+                            next_event = asyncio.create_task(graph_events.__anext__())
+                            for sse_event in graph_event_to_sse_events(graph_event, final_state, runtime):
+                                yield encode_sse(sse_event["type"], sse_event.get("data", {}))
 
-                        now = time.perf_counter()
-                        if now - last_heartbeat >= HEARTBEAT_INTERVAL:
-                            elapsed_ms = round((now - t_start) * 1000, 0)
-                            yield encode_sse("elapsed", {"ms": elapsed_ms})
-                            last_heartbeat = now
-                finally:
-                    if not next_event.done():
-                        next_event.cancel()
-                        with suppress(asyncio.CancelledError):
-                            await next_event
-                    await graph_events.aclose()
+                            now = time.perf_counter()
+                            if now - last_heartbeat >= HEARTBEAT_INTERVAL:
+                                elapsed_ms = round((now - t_start) * 1000, 0)
+                                yield encode_sse("elapsed", {"ms": elapsed_ms})
+                                last_heartbeat = now
+                    finally:
+                        if not next_event.done():
+                            next_event.cancel()
+                            with suppress(asyncio.CancelledError):
+                                await next_event
+                        await graph_events.aclose()
+                final_state["llm_usage"] = usage_collector.snapshot()
 
             answer = final_state.get("final_answer", "") or ""
             sources_raw = final_state.get("sources", []) or []
@@ -214,6 +265,8 @@ async def chat_stream(req: ChatRequest):
 
             thinking_traces = final_state.get("step_traces", []) or []
             presentation = final_state.get("presentation") or None
+            usage_payload = _safe_usage_payload(list(final_state.get("llm_usage") or []))
+            fallback_telemetry = final_state.get("fallback_telemetry") or None
             if presentation:
                 yield encode_sse("presentation", presentation)
 
@@ -222,15 +275,17 @@ async def chat_stream(req: ChatRequest):
                 cid, user_query, answer, sources_data, thinking_traces,
                 presentation=presentation,
                 elapsed_ms=total_ms,
+                llm_usage=usage_payload["calls"],
+                fallback_telemetry=fallback_telemetry,
             )
             yield encode_sse("done", {
                 "steps_count": runtime["steps_count"],
                 "reflections": runtime["reflections_count"],
+                "llm_usage": usage_payload,
+                "fallback_telemetry": fallback_telemetry,
             })
         except Exception as e:
-            import traceback
-            traceback.print_exc()
-            yield encode_sse("error", {"message": str(e), "type": type(e).__name__})
+            yield encode_sse("error", {"message": "Agent execution failed.", "type": type(e).__name__})
         finally:
             graph_db.close()
             total_ms = round((time.perf_counter() - t_start) * 1000, 2)

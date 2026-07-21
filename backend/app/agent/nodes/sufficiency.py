@@ -16,6 +16,7 @@ import time
 
 from app.agent.stages import stage
 from app.agent.state import AgentState, StepTrace
+from app.agent.telemetry import record_fallback
 from app.tools.evaluate_docs import evaluate_docs
 
 MAX_SUFFICIENCY_ROUNDS = 1
@@ -39,6 +40,14 @@ def sufficiency_node(state: AgentState, *, query: str) -> dict:
         }
         if parse_failed:
             out["evaluator_parse_failed"] = True
+            out["degraded"] = True
+            out["fallback_telemetry"] = record_fallback(
+                state,
+                failure_class=str(result.get("failure_class") or "sufficiency_output_unparseable"),
+                stage="sufficiency",
+                outcome="safe_degraded_answer",
+                degraded=True,
+            )
             s.warning("充分性评估解析失败，按低可信度继续", detail=result)
         elif sufficient:
             s.done("证据足以支撑回答", detail=result)
@@ -46,8 +55,22 @@ def sufficiency_node(state: AgentState, *, query: str) -> dict:
             out["sufficiency_round"] = round_used + 1
             if round_used >= MAX_SUFFICIENCY_ROUNDS:
                 out["degraded"] = True
+                out["fallback_telemetry"] = record_fallback(
+                    state,
+                    failure_class="supplement_retrieval_budget_exhausted",
+                    stage="sufficiency",
+                    outcome="safe_degraded_answer",
+                    degraded=True,
+                )
                 s.warning("补充检索后证据仍不足，将注明局限后作答", detail=result)
             else:
+                out["fallback_telemetry"] = record_fallback(
+                    state,
+                    failure_class="evidence_insufficient",
+                    stage="sufficiency",
+                    outcome="supplement_retrieval",
+                    re_retrieve_delta=1,
+                )
                 missing = result.get("missing_aspects") or []
                 s.warning(
                     "证据不足，准备补充检索" + (f"（缺少：{'、'.join(str(m) for m in missing[:2])}）" if missing else ""),

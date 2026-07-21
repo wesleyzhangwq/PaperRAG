@@ -14,7 +14,9 @@ from langchain_openai import ChatOpenAI
 from app.agent.prompts.planner import PLANNER_PROMPT, RE_PLANNER_PROMPT
 from app.agent.stages import emit_plan, stage
 from app.agent.state import AgentState, StepSpec, StepTrace
+from app.agent.telemetry import classify_failure, record_fallback
 from app.core.config import get_settings
+from app.observability.llm_usage import invoke_with_usage
 from app.utils.llm_json import extract_json
 
 # Actions the executor can dispatch. evaluate_docs / reasoning_synthesis are
@@ -71,7 +73,9 @@ def _normalize_params(action: str, params: dict, default_query: str) -> dict:
     return cleaned
 
 
-def _parse_plan(content: str, max_steps: int, *, default_query: str = "") -> list[StepSpec]:
+def _parse_plan_with_status(
+    content: str, max_steps: int, *, default_query: str = ""
+) -> tuple[list[StepSpec], bool]:
     steps = extract_json(content)
     if isinstance(steps, list):
         parsed = [
@@ -84,10 +88,16 @@ def _parse_plan(content: str, max_steps: int, *, default_query: str = "") -> lis
             if isinstance(s, dict) and s.get("action") in EXECUTABLE_ACTIONS
         ]
         if parsed:
-            return parsed[:max_steps]
-    return [
-        StepSpec(action="retrieve_local", params={"query": "", "top_k": 8}, reason="fallback"),
-    ]
+            return parsed[:max_steps], False
+    return (
+        [StepSpec(action="retrieve_local", params={"query": "", "top_k": 8}, reason="fallback")],
+        True,
+    )
+
+
+def _parse_plan(content: str, max_steps: int, *, default_query: str = "") -> list[StepSpec]:
+    """Compatibility wrapper retained for focused planner tests."""
+    return _parse_plan_with_status(content, max_steps, default_query=default_query)[0]
 
 
 def _supplement_query(query: str, issues: list[str], missing_aspects: list[str]) -> str:
@@ -153,14 +163,43 @@ def planner_node(state: AgentState, *, query: str) -> dict:
             intent=json.dumps(intent, ensure_ascii=False),
             max_steps=settings.agent_max_plan_steps,
         )
-        response = llm.invoke(prompt)
-        plan = _parse_plan(
-            response.content,
-            settings.agent_max_plan_steps,
-            default_query=query,
-        )
+        telemetry = None
+        try:
+            response = invoke_with_usage(
+                llm,
+                prompt,
+                node="planner",
+                model=settings.planner_model or settings.llm_model,
+                api_base=settings.llm_api_base,
+            )
+            plan, parse_failed = _parse_plan_with_status(
+                response.content,
+                settings.agent_max_plan_steps,
+                default_query=query,
+            )
+        except Exception as exc:
+            plan, parse_failed = _parse_plan_with_status(
+                "", settings.agent_max_plan_steps, default_query=query
+            )
+            telemetry = record_fallback(
+                state,
+                failure_class=classify_failure(exc, default="planner_llm_failure"),
+                stage="planner",
+                outcome="fallback_local_plan",
+            )
+        if parse_failed and telemetry is None:
+            telemetry = record_fallback(
+                state,
+                failure_class="planner_output_unparseable",
+                stage="planner",
+                outcome="fallback_local_plan",
+            )
         emit_plan(plan, revision=0)
-        s.done(f"{len(plan)} 个检索步骤", detail={"steps": [p["action"] for p in plan]})
+        detail = {"steps": [p["action"] for p in plan], "fallback_plan": bool(telemetry)}
+        if telemetry:
+            s.warning(f"{len(plan)} 个检索步骤（安全回退计划）", detail=detail)
+        else:
+            s.done(f"{len(plan)} 个检索步骤", detail=detail)
 
     duration = round((time.perf_counter() - t0) * 1000, 2)
     trace = StepTrace(
@@ -170,11 +209,14 @@ def planner_node(state: AgentState, *, query: str) -> dict:
         output_summary=f"generated {len(plan)} steps",
         duration_ms=duration,
     )
-    return {
+    out = {
         "plan": plan,
         "plan_step_index": 0,
         "step_traces": state["step_traces"] + [trace],
     }
+    if telemetry:
+        out["fallback_telemetry"] = telemetry
+    return out
 
 
 def re_planner_node(state: AgentState, *, query: str, issues: list[str], missing_aspects: list[str]) -> dict:
@@ -185,17 +227,43 @@ def re_planner_node(state: AgentState, *, query: str, issues: list[str], missing
     with stage("plan", stage_id=f"plan:r{int(state.get('sufficiency_round', 0)) + int(state.get('reflection_count', 0))}",
                title="补充检索计划") as s:
         llm = _get_llm()
+        settings = get_settings()
         prompt = RE_PLANNER_PROMPT.format(
             query=query,
             issues=json.dumps(issues, ensure_ascii=False),
             missing_aspects=json.dumps(missing_aspects, ensure_ascii=False),
         )
-        response = llm.invoke(prompt)
-        raw_steps = _parse_plan(
-            response.content,
-            3,
-            default_query=_supplement_query(query, issues, missing_aspects),
-        )
+        telemetry = None
+        try:
+            response = invoke_with_usage(
+                llm,
+                prompt,
+                node="re_planner",
+                model=settings.planner_model or settings.llm_model,
+                api_base=settings.llm_api_base,
+            )
+            raw_steps, parse_failed = _parse_plan_with_status(
+                response.content,
+                3,
+                default_query=_supplement_query(query, issues, missing_aspects),
+            )
+        except Exception as exc:
+            raw_steps, parse_failed = _parse_plan_with_status(
+                "", 3, default_query=_supplement_query(query, issues, missing_aspects)
+            )
+            telemetry = record_fallback(
+                state,
+                failure_class=classify_failure(exc, default="re_planner_llm_failure"),
+                stage="re_planner",
+                outcome="deterministic_supplement_plan",
+            )
+        if parse_failed and telemetry is None:
+            telemetry = record_fallback(
+                state,
+                failure_class="re_planner_output_unparseable",
+                stage="re_planner",
+                outcome="deterministic_supplement_plan",
+            )
         new_steps = _sanitize_supplementary_steps(
             raw_steps,
             query=query,
@@ -204,7 +272,11 @@ def re_planner_node(state: AgentState, *, query: str, issues: list[str], missing
         )
         full_plan = state["plan"] + new_steps
         emit_plan(full_plan, revision=1)
-        s.done(f"补充 {len(new_steps)} 个检索步骤", detail={"steps": [p["action"] for p in new_steps]})
+        detail = {"steps": [p["action"] for p in new_steps], "fallback_plan": bool(telemetry)}
+        if telemetry:
+            s.warning(f"补充 {len(new_steps)} 个检索步骤（确定性回退）", detail=detail)
+        else:
+            s.done(f"补充 {len(new_steps)} 个检索步骤", detail=detail)
 
     duration = round((time.perf_counter() - t0) * 1000, 2)
     trace = StepTrace(
@@ -214,8 +286,11 @@ def re_planner_node(state: AgentState, *, query: str, issues: list[str], missing
         output_summary=f"generated {len(new_steps)} supplementary steps",
         duration_ms=duration,
     )
-    return {
+    out = {
         "plan": full_plan,
         "plan_step_index": len(state["plan"]),
         "step_traces": state["step_traces"] + [trace],
     }
+    if telemetry:
+        out["fallback_telemetry"] = telemetry
+    return out

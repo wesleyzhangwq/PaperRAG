@@ -142,8 +142,34 @@ def test_groundedness_deterministic_precheck_catches_fabricated_citation():
     mock_llm.invoke.assert_not_called()
 
 
+def test_groundedness_rejects_url_citation_outside_synthesis_context():
+    mock_llm = MagicMock()
+    state = _base_state(
+        final_answer="Retrieved but not synthesized https://arxiv.org/abs/1810.04805v2",
+        retrieval_context=[
+            Document(page_content="used", metadata={"paper_id": "1706.03762"}),
+            Document(page_content="retrieved only", metadata={"paper_id": "1810.04805"}),
+        ],
+        synthesis_context_paper_ids=["1706.03762"],
+    )
+
+    with patch("app.agent.nodes.groundedness._get_llm", return_value=mock_llm):
+        result = groundedness_node(state, query="test")
+
+    assert result["reflection_result"]["citation_ok"] is False
+    assert "1810.04805" in result["reflection_result"]["issues"][0]
+    mock_llm.invoke.assert_not_called()
+
+
 def test_citation_gate_extracts_citations():
-    state = _base_state(final_answer="This uses attention [arxiv:1706.03762] and BERT [arxiv:1810.04805]")
+    state = _base_state(
+        final_answer="This uses attention [arxiv:1706.03762] and BERT [arxiv:1810.04805]",
+        retrieval_context=[
+            Document(page_content="attention", metadata={"paper_id": "1706.03762"}),
+            Document(page_content="bert", metadata={"paper_id": "1810.04805"}),
+        ],
+        synthesis_context_paper_ids=["1706.03762", "1810.04805"],
+    )
     mock_db = MagicMock()
     mock_paper = MagicMock()
     mock_paper.title = "Attention Paper"
@@ -186,6 +212,48 @@ def test_citation_gate_strips_unresolvable_citation():
     assert result["removed_citations"] == ["9999.99999"]
     assert "[arxiv:9999.99999]" not in result["final_answer"]
     assert "[arxiv:1706.03762]" in result["final_answer"]
+
+
+def test_citation_gate_strips_url_and_retrieved_only_citation():
+    state = _base_state(
+        final_answer="Legal [ arxiv:1706.03762 ] and illegal https://arxiv.org/abs/1810.04805v3.",
+        retrieval_context=[
+            Document(page_content="used", metadata={"paper_id": "1706.03762"}),
+            Document(page_content="retrieved only", metadata={"paper_id": "1810.04805"}),
+        ],
+        synthesis_context_paper_ids=["1706.03762"],
+    )
+    mock_db = MagicMock()
+    mock_paper = MagicMock(
+        title="Paper",
+        authors=[],
+        year=2020,
+        primary_category="cs.CL",
+        doi=None,
+    )
+    mock_db.query.return_value.filter.return_value.one_or_none.return_value = mock_paper
+
+    result = citation_gate_node(state, db=mock_db)
+
+    assert [source.paper_id for source in result["sources"]] == ["1706.03762"]
+    assert result["removed_citations"] == ["1810.04805"]
+    assert "1810.04805" not in result["final_answer"]
+
+
+def test_citation_gate_does_not_bypass_acl_as_fresh_context_source():
+    state = _base_state(
+        final_answer="Hidden [arxiv:1706.03762]",
+        synthesis_context_paper_ids=["1706.03762"],
+    )
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.one_or_none.return_value = MagicMock()
+
+    with patch("app.agent.nodes.citation_gate._is_visible", return_value=False):
+        result = citation_gate_node(state, db=mock_db)
+
+    assert result["sources"] == []
+    assert result["removed_citations"] == ["1706.03762"]
+    assert "1706.03762" not in result["final_answer"]
 
 
 def test_citation_gate_keeps_context_only_citation_with_minimal_source():

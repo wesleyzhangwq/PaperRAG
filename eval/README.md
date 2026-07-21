@@ -150,7 +150,7 @@ RETRIEVAL_K=8 HYBRID_ALPHA=0.72 \
 
 ```bash
 backend/.venv/bin/python eval/run_agentic_rag_eval.py \
-  --dataset eval/datasets/questions_v3_200.jsonl \
+  --dataset eval/datasets/questions_501_test_200.jsonl \
   --run-id agentic-rag-v5-30-local-bge-m3-20260710 \
   --sample-size 30 --context-k 5 --resume
 
@@ -160,7 +160,37 @@ backend/.venv/bin/python eval/scripts/repair_agentic_compare_run.py \
   --max-attempts 3 --sleep-sec 8
 ```
 
-每生成一个逐题结果，runner 都会持久化 JSONL；`--resume` 仅跳过已成功的题目，因此中断或模型网络错误后可以定点补跑。
+每生成一个逐题结果，runner 都会持久化 JSONL；`--resume` 仅跳过已成功的题目，因此中断或模型网络错误后可以定点补跑。恢复前会逐项核对数据集 SHA-256、选中 qid 及顺序、抽样参数、Traditional/Agentic 配置、provider/model/embedding 设置、外部检索开关、billing origin、价格目录内容与版本，以及代码快照；任一不可变输入变化都会拒绝混跑，旧版缺少 `resume_contract` 的 manifest 必须新开 run。
+
+### 生产化任务、延迟、成本与失败兜底指标
+
+`run_agentic_rag_eval.py` 的新版结果同时记录严格端到端 `task_success`、端到端与分阶段延迟、结构化 fallback 遥测，以及覆盖全部内部 LLM 节点的 provider usage。`task_success` 的口径为：请求非终态失败且非降级；结构化回答/拒答模式符合 gold；所有最终引用都属于最终综合上下文；正例最终来源命中 gold；citation gate 后没有非法引用残留。安全降级不算完整任务成功。
+
+延迟汇总包含 P50/P90/P95/mean 和样本数，并将 normal、fallback、terminal 三条路径分开；小样本 P95 仅用于描述该样本集，不应作为稳定生产 SLO。成本只接受 provider 返回的真实 usage，并要求 billing origin、provider、精确模型都能匹配版本化官方价格目录。任一内部调用 usage 缺失、官方目录单独计价的 cache read/write 维度未报告、或精确价格不可证实时，逐题 `cost_status=unknown`、`cost_usd=null`；缺失 cache 维度保留为 null，绝不假定为 0。评测不会用字符串 token 估算，也不会把 unknown 当成 0。当前成本范围为 `LLM-only`，不含 embedding/rerank。
+
+```bash
+# 确定性生产图故障注入：10 个场景、无网络、无外部 API 请求
+PYTHONPATH=. backend/.venv/bin/python eval/run_failure_injection_eval.py \
+  --run-id paperrag-failure-injection-v1-20260721
+
+# 当真实 provider 的 billing origin 或可计费 usage 映射不可验证时，生成 n=0 的 blocked 报告
+PYTHONPATH=. backend/.venv/bin/python eval/write_blocked_real_benchmark.py \
+  --run-id paperrag-real-provider-blocked-20260721
+
+# 完整真实 provider 评测仅在 billing origin、精确价格与计费 usage 维度均已安全验证后运行
+PYTHONPATH=. backend/.venv/bin/python eval/run_agentic_rag_eval.py \
+  --dataset eval/datasets/questions_501_test_200.jsonl \
+  --run-id <versioned-run-id> --sample-size <n> \
+  --billing-origin minimax_paygo
+```
+
+每次生产化运行写入独立版本目录，并保留四个规范化产物：`manifest.json`、`per_question.jsonl`、`summary.json`、`report.md`。Manifest 记录 commit/dirty、数据集 hash、样本数、provider/model、非敏感配置、并发/预热/超时、价格目录版本、命令、时间与运行环境；不得写入 API key、完整 endpoint、prompt 或 provider 私有推理。
+
+故障注入覆盖本地空结果/异常、arXiv 与 web 不可用、planner/sufficiency 不可解析、LLM timeout、groundedness 重新检索/重新生成、补检索预算耗尽，以及预期的终态数据库失败。其恢复率定义为 `fallback_recovery_rate = fallback_recovered / fallback_attempted`，其中 `fallback_recovered` 还必须满足上述严格 `task_success`。
+
+2026-07-21 的可复现确定性结果位于 `eval/results/production/paperrag-failure-injection-v1-20260721/`：10/10 场景符合预期，其中成功恢复 7、降级但安全返回 2、预期终态失败 1；fallback recovery 为 7/9（0.7778），严格 task success 为 7/10（0.7）。该 fixture-only 小样本的 P50/P90/P95/mean 为 0.0117/0.0136/0.0150/0.0119 秒，仅用于验证遥测与恢复状态机，不代表真实 provider 延迟或生产 SLO。
+
+同日真实 provider 运行记录在 `eval/results/production/paperrag-real-provider-blocked-20260721/`：当前配置模型为 `MiniMax-M3`。MiniMax 当前页面公布了按 context 分层的 M3 input/output/cache-read 价格，但本地兼容端点的 billing origin 未验证，且返回 usage 维度无法安全映射到该计费合同；因此版本化目录对 M3 保持 fail-closed，不宣称精确可计费成本。为避免无法执行精确 USD 安全上限，运行在发送请求前被阻断。报告明确记录 `n=0`、外部请求 0，所有真实质量/延迟/成本指标为 unknown；不得将其替换为 fixture 数字。
 
 ### 历史 Traditional RAG vs Agentic RAG 对照（不用于简历）
 

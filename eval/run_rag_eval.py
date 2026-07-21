@@ -377,6 +377,7 @@ def generate_fixed_context_answer(query: str, context: str) -> str:
     from langchain_openai import ChatOpenAI
 
     from app.core.config import get_settings
+    from app.observability.llm_usage import invoke_with_usage
 
     settings = get_settings()
     llm = ChatOpenAI(
@@ -398,7 +399,13 @@ Question:
 Retrieved context:
 {context}
 """
-    response = llm.invoke(prompt)
+    response = invoke_with_usage(
+        llm,
+        prompt,
+        node="traditional_synthesis",
+        model=settings.llm_model,
+        api_base=settings.llm_api_base,
+    )
     return str(response.content or "").strip()
 
 

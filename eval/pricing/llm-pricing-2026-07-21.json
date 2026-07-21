@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0",
+  "catalog_version": "minimax-paygo-2026-07-21",
+  "observed_at": "2026-07-21",
+  "currency": "USD",
+  "unit": "per_1m_tokens",
+  "billing_origin": "minimax_paygo",
+  "provider": "minimax",
+  "source": {
+    "name": "MiniMax Pay as You Go",
+    "url": "https://platform.minimax.io/docs/guides/pricing-paygo",
+    "authority": "official_provider_documentation"
+  },
+  "models": {
+    "MiniMax-M2.7": {
+      "input": 0.3,
+      "output": 1.2,
+      "cache_read": 0.06,
+      "cache_write": 0.375
+    },
+    "MiniMax-M2.7-highspeed": {
+      "input": 0.6,
+      "output": 2.4,
+      "cache_read": 0.06,
+      "cache_write": 0.375
+    }
+  }
+}

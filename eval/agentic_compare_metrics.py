@@ -3,13 +3,18 @@ from __future__ import annotations
 
 import math
 import re
+import sys
 from collections import defaultdict
+from pathlib import Path
 from statistics import mean
+from typing import Any
 
-CITATION_RE = re.compile(
-    r"(?:\[?\s*arxiv:|https?://arxiv\.org/abs/)([0-9]{4}\.[0-9]{4,6})(?:v\d+)?\]?",
-    re.IGNORECASE,
-)
+BACKEND_ROOT = Path(__file__).resolve().parents[1] / "backend"
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
+from app.utils.citations import extract_arxiv_ids  # noqa: E402
+
 THINK_BLOCK_RE = re.compile(r"<think>.*?</think>\s*", re.IGNORECASE | re.DOTALL)
 ABSTENTION_TERMS = (
     "信息不足",
@@ -27,13 +32,7 @@ ABSTENTION_TERMS = (
 
 
 def extract_citation_pids(answer: str) -> list[str]:
-    found: list[str] = []
-    seen: set[str] = set()
-    for pid in CITATION_RE.findall(answer or ""):
-        if pid not in seen:
-            found.append(pid)
-            seen.add(pid)
-    return found
+    return extract_arxiv_ids(answer)
 
 
 def strip_thinking_for_metrics(answer: str) -> str:
@@ -86,14 +85,69 @@ def answer_case_metrics(
     step_count: int | None = None,
     retrieval_step_count: int | None = None,
     error: str | None = None,
+    final_source_pids: list[str] | None = None,
+    presentation: dict[str, Any] | None = None,
+    sufficiency_result: dict[str, Any] | None = None,
+    removed_citation_pids: list[str] | None = None,
+    degraded_answer: bool = False,
+    terminal_failure: bool | None = None,
+    fallback_telemetry: dict[str, Any] | None = None,
+    request_completed: bool | None = None,
 ) -> dict:
     expected = set(_unique(expected_paper_ids))
     sources = set(_unique(source_pids))
     contexts = set(_unique(context_pids if context_pids is not None else source_pids))
     citations = extract_citation_pids(answer)
     cited = set(citations)
+    final_sources = set(_unique(final_source_pids if final_source_pids is not None else citations))
+    removed = set(_unique(removed_citation_pids or []))
     is_negative = expected_mode in {"insufficient", "refuse"} or not expected
-    abstained = detect_abstention(answer)
+    response_mode = str((presentation or {}).get("response_mode") or "")
+    structured_mode = response_mode in {"answer", "insufficient", "refuse", "degraded"}
+    abstained = (
+        response_mode in {"insufficient", "refuse"}
+        if structured_mode
+        else detect_abstention(answer)
+    )
+    terminal = bool(error) if terminal_failure is None else bool(terminal_failure)
+    completed = (not bool(error)) if request_completed is None else bool(request_completed)
+    mode_correct = False
+    if completed and not terminal:
+        if structured_mode:
+            mode_correct = (
+                response_mode in {"insufficient", "refuse"}
+                if is_negative
+                else response_mode == "answer"
+            )
+        else:
+            mode_correct = abstained if is_negative else not abstained
+    citations_within_context = cited <= contexts
+    illegal_citations_remaining = sorted((cited - contexts) | (cited & removed))
+    citation_gate_clean = not illegal_citations_remaining
+    expected_source_hit = bool(final_sources & expected) if expected else None
+    telemetry = dict(fallback_telemetry or {})
+
+    if is_negative:
+        task_success = bool(
+            completed
+            and not terminal
+            and not degraded_answer
+            and mode_correct
+            and citations_within_context
+            and citation_gate_clean
+        )
+    else:
+        task_success = bool(
+            completed
+            and not terminal
+            and not degraded_answer
+            and mode_correct
+            and citations_within_context
+            and citation_gate_clean
+            and expected_source_hit
+        )
+    fallback_attempted = bool(telemetry.get("fallback_attempted"))
+    fallback_recovered = bool(fallback_attempted and task_success and not degraded_answer)
 
     row: dict = {
         "qid": qid,
@@ -106,9 +160,26 @@ def answer_case_metrics(
         "has_expected": bool(expected),
         "is_negative": is_negative,
         "answer_abstained": abstained,
-        "mode_correct": False if error else (abstained if is_negative else not abstained),
+        "mode_correct": mode_correct,
+        "mode_signal": "structured" if structured_mode else "text_fallback",
+        "response_mode": response_mode or None,
         "citation_pids": citations,
         "citation_count": len(citations),
+        "final_source_pids": sorted(final_sources),
+        "expected_source_hit": expected_source_hit,
+        "citations_within_final_context": citations_within_context,
+        "citation_gate_clean": citation_gate_clean,
+        "illegal_citations_remaining": illegal_citations_remaining,
+        "removed_citation_pids": sorted(removed),
+        "request_completed": completed,
+        "degraded_answer": bool(degraded_answer),
+        "terminal_failure": terminal,
+        "task_success": task_success,
+        "fallback_attempted": fallback_attempted,
+        "fallback_recovered": fallback_recovered,
+        "re_retrieve_count": int(telemetry.get("re_retrieve_count") or 0),
+        "re_generate_count": int(telemetry.get("re_generate_count") or 0),
+        "failure_class": telemetry.get("failure_class"),
     }
     if latency_s is not None:
         row["latency_s"] = round(float(latency_s), 4)
@@ -151,18 +222,82 @@ def _avg(rows: list[dict], key: str) -> float | None:
 
 
 def _summarize_bucket(rows: list[dict]) -> dict:
-    positives = [row for row in rows if row.get("has_expected")]
+    positives = [row for row in rows if not row.get("is_negative")]
     negatives = [row for row in rows if row.get("is_negative")]
     latencies = [float(row["latency_s"]) for row in rows if row.get("latency_s") is not None]
-    return {
+    fallback_rows = [row for row in rows if row.get("fallback_attempted")]
+    terminal_rows = [row for row in rows if row.get("terminal_failure")]
+    normal_rows = [
+        row
+        for row in rows
+        if not row.get("fallback_attempted") and not row.get("terminal_failure")
+    ]
+    citation_rows = [row for row in rows if row.get("citation_support_rate") is not None]
+    citation_total = sum(int(row.get("citation_count") or 0) for row in citation_rows)
+    citation_supported = sum(
+        int(round(float(row["citation_support_rate"]) * int(row.get("citation_count") or 0)))
+        for row in citation_rows
+    )
+    known_costs = [
+        float(row["cost_usd"])
+        for row in rows
+        if row.get("cost_status") == "known" and row.get("cost_usd") is not None
+    ]
+    successful_costs = [
+        float(row["cost_usd"])
+        for row in rows
+        if row.get("task_success") and row.get("cost_status") == "known" and row.get("cost_usd") is not None
+    ]
+    fallback_costs = [
+        float(row["cost_usd"])
+        for row in fallback_rows
+        if row.get("cost_status") == "known" and row.get("cost_usd") is not None
+    ]
+
+    def latency_stats(bucket: list[dict]) -> dict:
+        values = [float(row["latency_s"]) for row in bucket if row.get("latency_s") is not None]
+        return {
+            "n": len(values),
+            "p50": _round(_percentile(values, 0.5)),
+            "p90": _round(_percentile(values, 0.9)),
+            "p95": _round(_percentile(values, 0.95)),
+            "mean": _round(mean(values), 4) if values else None,
+        }
+
+    stage_values: dict[str, list[float]] = defaultdict(list)
+    for row in rows:
+        for item in row.get("stage_timings") or []:
+            if item.get("duration_ms") is not None:
+                stage_values[str(item.get("action") or item.get("node") or "unknown")].append(
+                    float(item["duration_ms"])
+                )
+    stage_latency = {
+        name: {
+            "n": len(values),
+            "p50_ms": _round(_percentile(values, 0.5)),
+            "p90_ms": _round(_percentile(values, 0.9)),
+            "p95_ms": _round(_percentile(values, 0.95)),
+            "mean_ms": _round(mean(values), 4),
+        }
+        for name, values in sorted(stage_values.items())
+    }
+    attempted = len(fallback_rows)
+    result = {
         "count": len(rows),
         "count_positive": len(positives),
         "count_negative": len(negatives),
         "mode_accuracy": _round(_avg(rows, "mode_correct")),
+        "task_success_rate": _round(_avg(rows, "task_success")),
+        "expected_source_hit_rate": _round(_avg(positives, "expected_source_hit")),
+        "terminal_failure_rate": _round(_avg(rows, "terminal_failure")),
         "source_hit": _round(_avg(positives, "source_hit")),
         "source_recall": _round(_avg(positives, "source_recall")),
         "source_precision": _round(_avg(positives, "source_precision")),
         "citation_support_rate": _round(_avg(rows, "citation_support_rate")),
+        "citation_support_n": len(citation_rows),
+        "citation_supported_count": citation_supported,
+        "citation_total_count": citation_total,
+        "citation_support_micro_rate": _round(citation_supported / citation_total) if citation_total else None,
         "citation_precision": _round(_avg(positives, "citation_precision")),
         "citation_expected_hit": _round(_avg(positives, "citation_expected_hit")),
         "used_chunks_mean": _round(_avg(rows, "used_chunks")),
@@ -170,9 +305,31 @@ def _summarize_bucket(rows: list[dict]) -> dict:
         "retrieval_step_count_mean": _round(_avg(rows, "retrieval_step_count")),
         "latency_p50": _round(_percentile(latencies, 0.5)),
         "latency_p90": _round(_percentile(latencies, 0.9)),
+        "latency_p95": _round(_percentile(latencies, 0.95)),
         "latency_mean": _round(mean(latencies), 4) if latencies else None,
+        "latency_n": len(latencies),
+        "latency_by_path": {
+            "normal": latency_stats(normal_rows),
+            "fallback": latency_stats(fallback_rows),
+            "terminal": latency_stats(terminal_rows),
+        },
+        "stage_latency": stage_latency,
+        "fallback_attempted_count": attempted,
+        "fallback_recovered_count": sum(1 for row in fallback_rows if row.get("fallback_recovered")),
+        "fallback_recovery_rate": _round(
+            sum(1 for row in fallback_rows if row.get("fallback_recovered")) / attempted
+        ) if attempted else None,
+        "degraded_answer_rate": _round(_avg(rows, "degraded_answer")),
+        "cost_known_n": len(known_costs),
+        "cost_unknown_n": len(rows) - len(known_costs),
+        "cost_per_task_mean_usd": _round(mean(known_costs), 9) if known_costs else None,
+        "cost_per_task_p50_usd": _round(_percentile(known_costs, 0.5), 9),
+        "cost_per_task_p95_usd": _round(_percentile(known_costs, 0.95), 9),
+        "successful_task_cost_mean_usd": _round(mean(successful_costs), 9) if successful_costs else None,
+        "fallback_task_cost_mean_usd": _round(mean(fallback_costs), 9) if fallback_costs else None,
         "error_count": sum(1 for row in rows if row.get("error")),
     }
+    return result
 
 
 def _breakdown(rows: list[dict], key: str) -> dict:
@@ -197,12 +354,16 @@ def compare_system_summaries(
 ) -> list[dict]:
     keys = keys or [
         "mode_accuracy",
+        "task_success_rate",
+        "expected_source_hit_rate",
+        "terminal_failure_rate",
         "source_recall",
         "source_precision",
         "citation_support_rate",
         "citation_precision",
         "citation_expected_hit",
         "latency_p90",
+        "latency_p95",
         "used_chunks_mean",
     ]
     rows = []

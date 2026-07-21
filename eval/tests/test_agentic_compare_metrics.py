@@ -91,6 +91,87 @@ def test_answer_case_metrics_marks_execution_errors_incorrect() -> None:
     assert row["mode_correct"] is False
 
 
+def test_strict_task_success_uses_structured_positive_contract() -> None:
+    row = answer_case_metrics(
+        qid="p-strict",
+        qtype="concept_locate",
+        difficulty="easy",
+        expected_paper_ids=["1706.03762"],
+        expected_mode="answer",
+        answer="Supported [arxiv:1706.03762]",
+        source_pids=["1706.03762", "1810.04805"],
+        context_pids=["1706.03762"],
+        final_source_pids=["1706.03762"],
+        presentation={"response_mode": "answer", "confidence": "high"},
+        degraded_answer=False,
+        terminal_failure=False,
+    )
+
+    assert row["mode_signal"] == "structured"
+    assert row["expected_source_hit"] is True
+    assert row["citations_within_final_context"] is True
+    assert row["task_success"] is True
+
+
+def test_strict_task_success_rejects_degraded_and_residual_illegal_citations() -> None:
+    degraded = answer_case_metrics(
+        qid="p-degraded",
+        qtype="concept_locate",
+        difficulty="easy",
+        expected_paper_ids=["1706.03762"],
+        expected_mode="answer",
+        answer="Supported [arxiv:1706.03762]",
+        source_pids=["1706.03762"],
+        context_pids=["1706.03762"],
+        final_source_pids=["1706.03762"],
+        presentation={"response_mode": "answer"},
+        degraded_answer=True,
+    )
+    illegal = answer_case_metrics(
+        qid="p-illegal",
+        qtype="concept_locate",
+        difficulty="easy",
+        expected_paper_ids=["1706.03762"],
+        expected_mode="answer",
+        answer="Supported [arxiv:1706.03762] plus https://arxiv.org/abs/1810.04805",
+        source_pids=["1706.03762", "1810.04805"],
+        context_pids=["1706.03762"],
+        final_source_pids=["1706.03762"],
+        presentation={"response_mode": "answer"},
+        removed_citation_pids=["1810.04805"],
+    )
+
+    assert degraded["task_success"] is False
+    assert illegal["illegal_citations_remaining"] == ["1810.04805"]
+    assert illegal["task_success"] is False
+
+
+def test_strict_negative_success_requires_non_degraded_structured_abstention() -> None:
+    common = dict(
+        qid="n-strict",
+        qtype="negative",
+        difficulty="easy",
+        expected_paper_ids=["gold-metadata-must-not-make-positive"],
+        expected_mode="insufficient",
+        answer="No evidence.",
+        source_pids=[],
+        context_pids=[],
+        final_source_pids=[],
+        presentation={"response_mode": "insufficient", "confidence": "low"},
+    )
+    normal = answer_case_metrics(**common, degraded_answer=False)
+    degraded = answer_case_metrics(**common, degraded_answer=True)
+
+    assert normal["is_negative"] is True
+    assert normal["task_success"] is True
+    assert degraded["task_success"] is False
+
+    summary = summarize_answer_cases([normal, degraded])
+    assert summary["count_positive"] == 0
+    assert summary["count_negative"] == 2
+    assert summary["expected_source_hit_rate"] is None
+
+
 def test_strip_thinking_for_metrics_removes_reasoning_block() -> None:
     answer = "<think>private reasoning [arxiv:2604.00000]</think>\n\n最终答案 [arxiv:2604.14920]"
 
@@ -136,6 +217,8 @@ def test_summarize_answer_cases_groups_by_type_and_latency() -> None:
     assert summary["source_recall"] == 1.0
     assert summary["citation_precision"] == 1.0
     assert summary["latency_p90"] == 0.4
+    assert summary["latency_p95"] == 0.4
+    assert summary["latency_n"] == 2
     assert summary["by_type"]["concept_locate"]["source_recall"] == 1.0
     assert summary["by_type"]["negative"]["count_negative"] == 1
 

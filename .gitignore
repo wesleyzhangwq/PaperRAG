@@ -57,6 +57,10 @@ data/*.sqlite-wal
 *.log
 logs/
 
+# Local evaluation runs are generated artifacts by default. Curated,
+# evidence-bearing result directories are force-added explicitly.
+eval/results/**
+
 # Docker volumes
 mysql_data/
 

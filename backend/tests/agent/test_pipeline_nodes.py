@@ -80,10 +80,29 @@ def test_route_drops_web_step_when_tavily_unconfigured():
     with patch("app.agent.nodes.route.get_settings") as mock_settings:
         mock_settings.return_value.tavily_api_key = None
         mock_settings.return_value.arxiv_max_results = 5
+        mock_settings.return_value.agent_external_retrieval_enabled = True
         result = route_node(state, query="explain attention")
     actions = [s["action"] for s in result["plan"]]
     assert "search_web" not in actions
     assert "dropped_search_web_unconfigured" in result["route_decision"]["adjustments"]
+
+
+def test_route_drops_all_external_steps_in_local_only_mode():
+    state = _base_state(plan=[
+        StepSpec(action="retrieve_local", params={"query": "x"}, reason="local"),
+        StepSpec(action="retrieve_arxiv", params={"query": "x"}, reason="arxiv"),
+        StepSpec(action="search_web", params={"query": "x"}, reason="web"),
+    ])
+    with patch("app.agent.nodes.route.get_settings") as mock_settings:
+        mock_settings.return_value.agent_external_retrieval_enabled = False
+        mock_settings.return_value.graph_rag_enabled = False
+        mock_settings.return_value.retrieval_k = 20
+        mock_settings.return_value.tavily_api_key = None
+        mock_settings.return_value.arxiv_max_results = 5
+        result = route_node(state, query="2026 年最新进展")
+
+    assert [step["action"] for step in result["plan"]] == ["retrieve_local"]
+    assert "dropped_external_retrieval_local_only" in result["route_decision"]["adjustments"]
 
 
 def test_route_no_adjustments_for_good_plan():

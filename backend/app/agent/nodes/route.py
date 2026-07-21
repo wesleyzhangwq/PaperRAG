@@ -39,6 +39,19 @@ def route_node(state: AgentState, *, query: str) -> dict:
         plan = list(state.get("plan") or [])
         adjustments: list[str] = []
         settings = get_settings()
+        external_enabled = bool(
+            getattr(settings, "agent_external_retrieval_enabled", True)
+        )
+
+        if not external_enabled:
+            before = len(plan)
+            plan = [
+                step
+                for step in plan
+                if step["action"] not in {"retrieve_arxiv", "search_web"}
+            ]
+            if len(plan) != before:
+                adjustments.append("dropped_external_retrieval_local_only")
 
         used_actions = {step["action"] for step in plan}
         retrieval_steps = [p for p in plan if p["action"] in _RETRIEVAL_ACTIONS]
@@ -55,7 +68,7 @@ def route_node(state: AgentState, *, query: str) -> dict:
 
         # Policy 2: recency-sensitive queries need a live source.
         needs_recency = bool(_RECENCY_RE.search(query or ""))
-        if needs_recency and "retrieve_arxiv" not in used_actions and "search_web" not in used_actions:
+        if external_enabled and needs_recency and "retrieve_arxiv" not in used_actions and "search_web" not in used_actions:
             insert_at = next(
                 (i + 1 for i in range(len(plan) - 1, -1, -1) if plan[i]["action"] in _RETRIEVAL_ACTIONS),
                 len(plan),
@@ -70,7 +83,7 @@ def route_node(state: AgentState, *, query: str) -> dict:
 
         # Policy 3: drop web steps when the web tool is not configured
         # (executor would emit noisy 'web unavailable' otherwise).
-        if "search_web" in used_actions and not settings.tavily_api_key:
+        if external_enabled and "search_web" in used_actions and not settings.tavily_api_key:
             plan = [p for p in plan if p["action"] != "search_web"]
             used_actions.discard("search_web")
             adjustments.append("dropped_search_web_unconfigured")

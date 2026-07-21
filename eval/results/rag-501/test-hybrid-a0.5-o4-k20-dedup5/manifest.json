@@ -1,0 +1,38 @@
+{
+  "run_id": "test-hybrid-a0.5-o4-k20-dedup5",
+  "started_at": "2026-07-11T08:19:16.302695+00:00",
+  "finished_at": "2026-07-11T08:20:33.162607+00:00",
+  "dataset": "eval/datasets/questions_501_test_200.jsonl",
+  "detail_source": null,
+  "question_count": 200,
+  "k_values": [
+    1,
+    3,
+    5,
+    10
+  ],
+  "context_k": 5,
+  "retrieval_top_k": 20,
+  "retriever": "service",
+  "lexical_corpus": null,
+  "context_strategy": "paper_dedup",
+  "mmr_lambda": 0.65,
+  "generate": false,
+  "settings": {
+    "retrieval_k": 12,
+    "final_context_k": 3,
+    "hybrid_retrieval_enabled": true,
+    "hybrid_alpha": 0.5,
+    "hybrid_oversample": 4.0,
+    "hybrid_max_fetch": 96,
+    "cache_retrieval_enabled": false,
+    "env_overrides": {
+      "RETRIEVAL_K": "12",
+      "FINAL_CONTEXT_K": "3",
+      "HYBRID_RETRIEVAL_ENABLED": "true",
+      "HYBRID_ALPHA": "0.5",
+      "HYBRID_OVERSAMPLE": "4",
+      "HYBRID_MAX_FETCH": "96"
+    }
+  }
+}

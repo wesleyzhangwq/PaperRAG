@@ -730,6 +730,7 @@ def _settings_manifest() -> dict:
         "llm_max_retries": settings.llm_max_retries,
         "agent_max_plan_steps": settings.agent_max_plan_steps,
         "agent_max_reflections": settings.agent_max_reflections,
+        "agent_external_retrieval_enabled": settings.agent_external_retrieval_enabled,
         "agent_checkpoint_enabled": settings.agent_checkpoint_enabled,
         "tavily_web_search_configured": bool(settings.tavily_api_key),
         "arxiv_max_results": settings.arxiv_max_results,

@@ -5,6 +5,10 @@
 ```
 eval/
 ├── datasets/
+│   ├── mysql_papers_501_20260711.json # MySQL 501 篇 / 54,467 chunks 的证据快照
+│   ├── questions_501_dev_50.jsonl     # 仅用于参数选择的开发集
+│   ├── questions_501_test_200.jsonl   # paper-disjoint 冻结测试集
+│   ├── questions_501_manifest.json    # 语料、切分、hash 与负例审计清单
 │   ├── qdrant_papers_100_20260708.json # 从当前 Qdrant collection 导出的对齐语料
 │   ├── questions_v2.jsonl       # 旧版评测问题集
 │   └── questions_v3_200.jsonl   # 200 题纯 RAG 评测集
@@ -14,6 +18,7 @@ eval/
 │   ├── gen_questions.py         # LLM 生成评测问题
 │   ├── repair_questions.py      # 修复 fallback 样式的低质量生成题
 │   ├── repair_agentic_compare_run.py # 定点补跑中断的端到端对照行并重算汇总
+│   ├── compare_rag_runs.py     # 成对 bootstrap 置信区间与 win/tie/loss
 │   └── ablation.py              # 参数消融实验（旧版检索评测）
 ├── run_eval.py                  # 主评测脚本（端到端）
 ├── run_retrieval_eval.py        # 纯检索评测（不调 LLM 生成）
@@ -130,33 +135,37 @@ RETRIEVAL_K=8 HYBRID_ALPHA=0.72 \
 
 `run_agentic_rag_eval.py` 用同一题集同时运行两条路径：
 
-1. Traditional RAG：service retriever（`k=12, alpha=.72`）→ 固定 5 chunks → 单次生成；
-2. Agentic RAG：`run_agent_eval_sync`，在同一本地语料上执行 planner、工具路由、补检、反思和 citation gate；最终综合 3 chunks，反思预算≤2。
+1. Traditional RAG：tuned hybrid（`alpha=.5`，dense fetch 80，保留 top-20）→ paper 去重后的固定 top-5 context → 单次生成；
+2. Agentic RAG：复用同一 tuned hybrid，在本地 501 篇语料上执行 planner、工具路由、补检、反思和 citation gate；最终 context 同为 top-5，反思预算≤2。
 
 评测从 LangGraph state 读取两条分支的**原始本地检索论文 ID**计算 Recall / Precision；最终综合上下文单独用于 citation support，因而不再混淆“检索到的来源”和“最终引用来源”。默认 `local-only` 会屏蔽 arXiv/web 工具返回，结果只归因于本地 RAG。
 
-2026-07-10 当前结果目录：`eval/results/agentic/agentic-rag-v5-30-local-bge-m3-20260710/`。200 题集按题型比例抽取 30 题（27 正例、3 负例），两条分支均 30/30 成功：
+2026-07-11 当前结果目录：`eval/results/agentic/agentic-rag-501-v2-30-local-tuned/`。从冻结的 200 题 test 中按题型比例抽取 30 题（27 正例、3 负例），两条分支均 30/30 成功，且 Agent 动作审计中外部检索/Graph 动作为 0：
 
 | 指标 | Traditional RAG | Agentic RAG | 解读 |
 |------|-----------------|-------------|------|
-| 原始检索 Recall | 86.67% | **89.63%** | 多轮补检提高相关论文召回 |
-| 原始检索 Precision | 45.87% | **53.55%** | 补检后原始候选更集中 |
-| Citation support | 96.55% | **98.28%** | 最终回答的引用支持率小幅提高 |
-| 最终综合 chunks | 5.00 | **3.00** | 生成上下文减少 40% |
-| 平均检索步骤 | **1.00** | 7.27 | Agent 的执行成本更高 |
-| P90 端到端延迟 | **20.06s** | 221.48s | 现有多轮策略不适合默认走完整链路 |
+| 回答/拒答模式正确率 | 73.33% | **93.33%** | +20.00pp，paired bootstrap 95% CI [+3.33,+36.67]pp |
+| 原始检索 Recall | 80.74% | **87.04%** | +6.30pp，CI 下界为 0，不声明显著 |
+| 原始检索 Precision | 14.72% | **24.79%** | +10.07pp，95% CI [+1.50,+19.22]pp |
+| Citation support | 98.33% | **100.00%** | 引用均属于最终 synthesis context |
+| 平均检索步骤 | **1.00** | 3.73 | 补检与查询改写增加执行成本 |
+| P90 端到端延迟 | **15.91s** | 140.94s | 当前完整 Agent 路径只适合质量优先/复杂问题 |
 
-这是质量-成本边界的诊断，不将“Agent 更慢”回避为单一的正向结论；后续优化应优先增加早停和复杂问题路由，而不是默认执行多轮补检。
+`回答/拒答模式正确率` 是规则指标：正例需要给出实质回答，负例需要整体拒答；答案中的局部证据限制不等同于整题拒答。当前评测不使用外部 answer-quality judge，因此不把该指标表述为“答案正确率”。这是质量-成本边界的诊断；完整 Agent 路径应按问题复杂度路由，而不是所有请求默认执行。
 
 ```bash
+GRAPH_RAG_ENABLED=false AGENT_EXTERNAL_RETRIEVAL_ENABLED=false \
+HYBRID_ALPHA=.5 HYBRID_OVERSAMPLE=4 HYBRID_MAX_FETCH=96 \
+RETRIEVAL_K=20 FINAL_CONTEXT_K=5 CACHE_RETRIEVAL_ENABLED=false \
 backend/.venv/bin/python eval/run_agentic_rag_eval.py \
   --dataset eval/datasets/questions_501_test_200.jsonl \
-  --run-id agentic-rag-v5-30-local-bge-m3-20260710 \
-  --sample-size 30 --context-k 5 --resume
+  --run-id agentic-rag-501-v2-30-local-tuned \
+  --sample-size 30 --retrieval-top-k 20 --context-k 5 \
+  --traditional-context-strategy paper_dedup --resume
 
 # 若运行期间仅有部分行因外部模型网络错误失败，保留原始行并定点补跑
 backend/.venv/bin/python eval/scripts/repair_agentic_compare_run.py \
-  eval/results/agentic/agentic-rag-v5-30-local-bge-m3-20260710 \
+  eval/results/agentic/agentic-rag-501-v2-30-local-tuned \
   --max-attempts 3 --sleep-sec 8
 ```
 
@@ -227,6 +236,34 @@ python ../eval/scripts/ablation.py --all --skip-reingest
 ---
 
 ## 当前纯 RAG 评测结果
+
+当前权威结果已迁移到 501 篇 MySQL 事实语料：Qdrant 与 MySQL 精确对齐为 54,467 chunks，使用 50 题开发集选参，并在 paper-disjoint 的 200 题冻结测试集（180 正例、20 经审计负例）上比较可信 dense-only baseline 与 tuned hybrid。完整方法、消融、逐题型结果、bootstrap 区间和简历安全口径见：
+
+- `eval/results/rag-501/REPORT.md`
+- `eval/results/rag-501/test-dense-k20-dedup5/`
+- `eval/results/rag-501/test-hybrid-a0.5-o4-k20-dedup5/`
+- `eval/results/rag-501/test-comparison/`
+
+冻结测试核心结果：Hit@5 0.8222 -> 0.8500，Recall@5 0.7370 -> 0.7531，Context chunk precision 0.2192 -> 0.2407（相对 +9.84%，成对 bootstrap 95% CI 为 [+0.0013, +0.0417]），P90 0.390s -> 0.418s。NDCG@5 仅 0.7037 -> 0.7063，不能表述为显著排序提升。
+
+```bash
+# dense-only frozen test
+HYBRID_RETRIEVAL_ENABLED=false CACHE_RETRIEVAL_ENABLED=false \
+  backend/.venv/bin/python eval/run_rag_eval.py \
+  --dataset eval/datasets/questions_501_test_200.jsonl \
+  --run-id test-dense-k20-dedup5 --output-dir eval/results/rag-501 \
+  --retrieval-top-k 20 --context-k 5 --context-strategy paper_dedup
+
+# development-selected hybrid frozen test
+HYBRID_RETRIEVAL_ENABLED=true HYBRID_ALPHA=0.5 \
+HYBRID_OVERSAMPLE=4 HYBRID_MAX_FETCH=96 CACHE_RETRIEVAL_ENABLED=false \
+  backend/.venv/bin/python eval/run_rag_eval.py \
+  --dataset eval/datasets/questions_501_test_200.jsonl \
+  --run-id test-hybrid-a0.5-o4-k20-dedup5 --output-dir eval/results/rag-501 \
+  --retrieval-top-k 20 --context-k 5 --context-strategy paper_dedup
+```
+
+## 历史 100 篇纯 RAG 评测结果
 
 同一 runner、同一批 200 题（180 正例、20 个 negative/out-of-corpus）、同一语料 payload。评测不经过 LangGraph Agent，只测纯 RAG 的检索排序与 top-k 上下文质量。
 

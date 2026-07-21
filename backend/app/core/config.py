@@ -47,17 +47,17 @@ class Settings(BaseSettings):
     chunk_min_chars: int = 80
     chunk_noise_symbol_ratio: float = 0.35
     chunk_drop_references: bool = False
-    retrieval_k: int = 12
-    final_context_k: int = 3
+    retrieval_k: int = 20
+    final_context_k: int = 5
 
     # --- Chat history ---
     chat_history_window: int = 10
 
     # --- Hybrid retrieval (vector oversample + BM25 fusion / rerank) ---
     hybrid_retrieval_enabled: bool = True
-    hybrid_oversample: float = 2.5
-    hybrid_alpha: float = 0.3
-    hybrid_max_fetch: int = 64
+    hybrid_oversample: float = 4.0
+    hybrid_alpha: float = 0.5
+    hybrid_max_fetch: int = 96
 
     # --- Caching ---
     cache_retrieval_enabled: bool = True
@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     # --- Agent ---
     agent_max_plan_steps: int = 7
     agent_max_reflections: int = 2
+    agent_external_retrieval_enabled: bool = True
     agent_checkpoint_enabled: bool = True
     agent_checkpoint_path: str = str(PROJECT_ROOT / "data" / "langgraph_checkpoints.sqlite")
 

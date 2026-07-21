@@ -145,3 +145,31 @@ def test_re_planner_sanitizes_structural_steps_and_fills_missing_query():
     assert result["plan_step_index"] == len(old_plan)
     assert [step["action"] for step in appended] == ["retrieve_local"]
     assert appended[0]["params"]["query"] == "Dr. RTL tool calling mechanism"
+
+
+def test_planner_and_replanner_filter_external_steps_in_local_only_mode():
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = MagicMock(content=json.dumps([
+        {"action": "retrieve_arxiv", "params": {"query": "latest"}, "reason": "live"},
+        {"action": "search_web", "params": {"query": "latest"}, "reason": "web"},
+        {"action": "retrieve_local", "params": {"query": "local"}, "reason": "local"},
+    ]))
+    settings = MagicMock()
+    settings.agent_max_plan_steps = 7
+    settings.agent_external_retrieval_enabled = False
+    state = _base_state(intent={"type": "comparison", "entities": [], "complexity": "high"})
+
+    with patch("app.agent.nodes.planner._get_llm", return_value=mock_llm), patch(
+        "app.agent.nodes.planner.get_settings", return_value=settings
+    ):
+        initial = planner_node(state, query="compare locally")
+        replanned = re_planner_node(
+            {**state, "plan": initial["plan"], "plan_step_index": len(initial["plan"])},
+            query="compare locally",
+            issues=["missing"],
+            missing_aspects=[],
+        )
+
+    assert [step["action"] for step in initial["plan"]] == ["retrieve_local"]
+    appended = replanned["plan"][len(initial["plan"]):]
+    assert [step["action"] for step in appended] == ["retrieve_local"]

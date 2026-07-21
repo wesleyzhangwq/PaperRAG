@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from eval.graph_rag_eval import GraphServiceOutcome
 
 from eval.run_rag_eval import (
     build_retrieved_chunks,
@@ -13,6 +17,7 @@ from eval.run_rag_eval import (
     load_questions,
     redact_sensitive_text,
     rows_from_retrieval_detail,
+    run_pure_rag_eval,
 )
 
 
@@ -124,6 +129,46 @@ def test_load_lexical_corpus_and_paper_bm25_retrieve(tmp_path) -> None:
     assert chunks[0]["snippet"].startswith("Graph Retrieval")
 
 
+def test_lexical_retrieve_indexes_and_returns_representative_evidence(tmp_path) -> None:
+    corpus = tmp_path / "papers.json"
+    corpus.write_text(
+        json.dumps(
+            [
+                {
+                    "paper_id": "A",
+                    "title": "Generic Research Paper",
+                    "abstract": "",
+                    "primary_category": "cs.IR",
+                    "evidence_chunks": [
+                        {
+                            "chunk_id": "A::7",
+                            "text": "quasarneedle evidence describes citation expansion",
+                        }
+                    ],
+                },
+                {
+                    "paper_id": "B",
+                    "title": "Another Generic Paper",
+                    "abstract": "",
+                    "primary_category": "cs.IR",
+                    "evidence_chunks": [
+                        {"chunk_id": "B::2", "text": "unrelated visual segmentation"}
+                    ],
+                },
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    papers = load_lexical_corpus(corpus)
+    results = lexical_paper_retrieve("quasarneedle", papers, top_k=1)
+    chunks = build_retrieved_chunks(results)
+
+    assert chunks[0]["paper_id"] == "A"
+    assert "quasarneedle evidence" in chunks[0]["snippet"]
+
+
 def test_postprocess_chunks_can_dedupe_by_paper() -> None:
     chunks = [
         {"rank": 1, "paper_id": "A", "score": 0.9, "snippet": "alpha"},
@@ -218,3 +263,46 @@ def test_rows_from_retrieval_detail_replays_existing_detail_json() -> None:
     assert rows[0]["mrr"] == 0.25
     assert rows[0]["recall_at_3"] == 1.0
     assert rows[0]["retrieved_chunks"][1]["paper_id"] == "A"
+
+
+def test_pure_rag_runner_uses_service_graph_and_records_expansion_metadata() -> None:
+    question = {
+        "qid": "g001",
+        "query": "compare graph papers",
+        "expected_paper_ids": ["B"],
+        "expected_mode": "answer",
+        "difficulty": "hard",
+        "type": "comparison",
+        "reference_answer": "",
+    }
+    graph_doc = FakeDocument(
+        "graph evidence",
+        {"paper_id": "B", "title": "Graph paper", "chunk_id": "B:1"},
+    )
+    outcome = GraphServiceOutcome(
+        results=[(graph_doc, 0.8)],
+        graph_expansion_ms=12.5,
+        graph_fallback_reason=None,
+        graph_candidate_count=2,
+    )
+
+    settings = SimpleNamespace(graph_rag_enabled=True, retrieval_k=12)
+    with patch("app.core.config.get_settings", return_value=settings), patch(
+        "eval.graph_rag_eval.retrieve_service_graph", return_value=outcome
+    ) as retrieve_graph:
+        rows = run_pure_rag_eval(
+            questions=[question],
+            k_values=[1, 5],
+            context_k=1,
+            retrieval_top_k=4,
+            graph_expansion_top_k=6,
+            generate=False,
+            retriever_name="service_graph",
+        )
+
+    retrieve_graph.assert_called_once_with(
+        "compare graph papers", seed_top_k=4, expansion_top_k=6
+    )
+    assert rows[0]["recall_at_5"] == 1.0
+    assert rows[0]["graph_expansion_ms"] == 12.5
+    assert rows[0]["graph_candidate_count"] == 2

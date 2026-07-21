@@ -1,0 +1,85 @@
+{
+  "question_count": 200,
+  "bootstrap_samples": 10000,
+  "seed": 20260711,
+  "metrics": [
+    {
+      "metric": "ndcg_at_5",
+      "count": 180,
+      "baseline_mean": 0.706307,
+      "candidate_mean": 0.701175,
+      "mean_delta": -0.005132,
+      "relative_delta_pct": -0.73,
+      "ci95_low": -0.012171,
+      "ci95_high": -0.000243,
+      "wins": 0,
+      "ties": 176,
+      "losses": 4
+    },
+    {
+      "metric": "recall_at_5",
+      "count": 180,
+      "baseline_mean": 0.753062,
+      "candidate_mean": 0.747507,
+      "mean_delta": -0.005556,
+      "relative_delta_pct": -0.74,
+      "ci95_low": -0.016667,
+      "ci95_high": 0.0,
+      "wins": 0,
+      "ties": 179,
+      "losses": 1
+    },
+    {
+      "metric": "mrr",
+      "count": 180,
+      "baseline_mean": 0.741111,
+      "candidate_mean": 0.735741,
+      "mean_delta": -0.00537,
+      "relative_delta_pct": -0.72,
+      "ci95_low": -0.012685,
+      "ci95_high": -0.000278,
+      "wins": 0,
+      "ties": 176,
+      "losses": 4
+    },
+    {
+      "metric": "context_chunk_precision",
+      "count": 180,
+      "baseline_mean": 0.240741,
+      "candidate_mean": 0.184444,
+      "mean_delta": -0.056296,
+      "relative_delta_pct": -23.38,
+      "ci95_low": -0.083148,
+      "ci95_high": -0.0325,
+      "wins": 0,
+      "ties": 152,
+      "losses": 28
+    },
+    {
+      "metric": "context_recall",
+      "count": 180,
+      "baseline_mean": 0.753062,
+      "candidate_mean": 0.747507,
+      "mean_delta": -0.005556,
+      "relative_delta_pct": -0.74,
+      "ci95_low": -0.016667,
+      "ci95_high": 0.0,
+      "wins": 0,
+      "ties": 179,
+      "losses": 1
+    },
+    {
+      "metric": "latency_s",
+      "count": 200,
+      "baseline_mean": 0.354474,
+      "candidate_mean": 0.438167,
+      "mean_delta": 0.083693,
+      "relative_delta_pct": 23.61,
+      "ci95_low": 0.065963,
+      "ci95_high": 0.102582,
+      "wins": 11,
+      "ties": 0,
+      "losses": 189
+    }
+  ]
+}

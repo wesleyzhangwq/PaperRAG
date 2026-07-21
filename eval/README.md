@@ -5,6 +5,10 @@
 ```
 eval/
 ├── datasets/
+│   ├── mysql_papers_501_20260711.json # MySQL 501 篇 / 54,467 chunks 的证据快照
+│   ├── questions_501_dev_50.jsonl     # 仅用于参数选择的开发集
+│   ├── questions_501_test_200.jsonl   # paper-disjoint 冻结测试集
+│   ├── questions_501_manifest.json    # 语料、切分、hash 与负例审计清单
 │   ├── qdrant_papers_100_20260708.json # 从当前 Qdrant collection 导出的对齐语料
 │   ├── questions_v2.jsonl       # 旧版评测问题集
 │   └── questions_v3_200.jsonl   # 200 题纯 RAG 评测集
@@ -14,6 +18,7 @@ eval/
 │   ├── gen_questions.py         # LLM 生成评测问题
 │   ├── repair_questions.py      # 修复 fallback 样式的低质量生成题
 │   ├── repair_agentic_compare_run.py # 定点补跑中断的端到端对照行并重算汇总
+│   ├── compare_rag_runs.py     # 成对 bootstrap 置信区间与 win/tie/loss
 │   └── ablation.py              # 参数消融实验（旧版检索评测）
 ├── run_eval.py                  # 主评测脚本（端到端）
 ├── run_retrieval_eval.py        # 纯检索评测（不调 LLM 生成）
@@ -198,6 +203,34 @@ python ../eval/scripts/ablation.py --all --skip-reingest
 
 ## 当前纯 RAG 评测结果
 
+当前权威结果已迁移到 501 篇 MySQL 事实语料：Qdrant 与 MySQL 精确对齐为 54,467 chunks，使用 50 题开发集选参，并在 paper-disjoint 的 200 题冻结测试集（180 正例、20 经审计负例）上比较可信 dense-only baseline 与 tuned hybrid。完整方法、消融、逐题型结果、bootstrap 区间和简历安全口径见：
+
+- `eval/results/rag-501/REPORT.md`
+- `eval/results/rag-501/test-dense-k20-dedup5/`
+- `eval/results/rag-501/test-hybrid-a0.5-o4-k20-dedup5/`
+- `eval/results/rag-501/test-comparison/`
+
+冻结测试核心结果：Hit@5 0.8222 -> 0.8500，Recall@5 0.7370 -> 0.7531，Context chunk precision 0.2192 -> 0.2407（相对 +9.84%，成对 bootstrap 95% CI 为 [+0.0013, +0.0417]），P90 0.390s -> 0.418s。NDCG@5 仅 0.7037 -> 0.7063，不能表述为显著排序提升。
+
+```bash
+# dense-only frozen test
+HYBRID_RETRIEVAL_ENABLED=false CACHE_RETRIEVAL_ENABLED=false \
+  backend/.venv/bin/python eval/run_rag_eval.py \
+  --dataset eval/datasets/questions_501_test_200.jsonl \
+  --run-id test-dense-k20-dedup5 --output-dir eval/results/rag-501 \
+  --retrieval-top-k 20 --context-k 5 --context-strategy paper_dedup
+
+# development-selected hybrid frozen test
+HYBRID_RETRIEVAL_ENABLED=true HYBRID_ALPHA=0.5 \
+HYBRID_OVERSAMPLE=4 HYBRID_MAX_FETCH=96 CACHE_RETRIEVAL_ENABLED=false \
+  backend/.venv/bin/python eval/run_rag_eval.py \
+  --dataset eval/datasets/questions_501_test_200.jsonl \
+  --run-id test-hybrid-a0.5-o4-k20-dedup5 --output-dir eval/results/rag-501 \
+  --retrieval-top-k 20 --context-k 5 --context-strategy paper_dedup
+```
+
+## 历史 100 篇纯 RAG 评测结果
+
 同一 runner、同一批 200 题（180 正例、20 个 negative/out-of-corpus）、同一语料 payload。评测不经过 LangGraph Agent，只测纯 RAG 的检索排序与 top-k 上下文质量。
 
 ### 向量迁移修复与参数选择
@@ -219,6 +252,48 @@ python ../eval/scripts/ablation.py --all --skip-reingest
 > 定位向量模型迁移导致的 Qdrant 混合向量空间，在不覆盖原索引的前提下重嵌入 9,704 chunks 并以 alias 切换；200 题纯 RAG 中 NDCG@5 0.615 -> 0.835、Recall@5 0.618 -> 0.863、P90 0.417s -> 0.347s。
 
 注意：negative 问题在纯检索阶段仍会返回 top-k 近邻，不能单独证明“正确拒答”；拒答能力必须通过 `--generate` 或端到端 Agent 评测验证。
+
+### Graph RAG 候选评测
+
+`service_graph` 不实现独立检索逻辑：它严格调用生产 local `retrieve`、`retrieve_graph_context` 和 `evidence_node`。Neo4j 只扩展本地论文 ID，最终回答证据仍由 Qdrant 本地 chunk 二次回捞。
+
+运行前会强制检查评测集的目标论文是否全部存在于 MySQL 图投影源；若 Qdrant 与 MySQL 不是同一语料，runner 会中止而不是把图降级误报为候选结果。
+
+先启动 Neo4j 并同步成功入库的本地论文：
+
+```bash
+GRAPH_RAG_ENABLED=true docker compose up -d --build
+docker compose exec backend python scripts/sync_graph.py --all
+```
+
+使用与当前 Pure RAG 相同的 200 题集进行候选对照：
+
+```bash
+GRAPH_RAG_ENABLED=true \
+PYTHONPATH=.:backend backend/.venv/bin/python eval/run_rag_eval.py \
+  --dataset eval/datasets/questions_501_test_200.jsonl \
+  --run-id test-graph-geo05-k20-c12 \
+  --retriever service_graph \
+  --retrieval-top-k 20 --graph-expansion-top-k 20 --context-k 5 \
+  --context-strategy paper_dedup \
+  --compare-summary eval/results/rag-501/test-hybrid-a0.5-o4-k20-dedup5/summary.json
+```
+
+候选报告会写入每题图扩展耗时、候选数、降级原因和五项门槛。仅当下列条件同时满足时，Graph RAG 才可合并并启用：
+
+| 门槛 | 要求 |
+|------|------|
+| comparison Recall@5 | 相对传统 Pure RAG 至少 +0.05 |
+| trend_synthesis Recall@5 | 相对传统 Pure RAG 至少 +0.05 |
+| 整体 NDCG@5 | 不低于传统 Pure RAG -0.01 |
+| fixed-context citation support | 1.00 |
+| 图扩展 P95 | 不超过 800ms |
+
+2026-07-11 的 501 篇构图与冻结评测已完成，详见
+`docs/graph-rag-build-report-20260711.md`。Neo4j 含 501 个本地 Paper、
+40,132 条 CITES，MySQL/Neo4j 本地论文 ID 零差异；生产路径 0 降级，图扩展
+P95 为 69.56ms。但 comparison/trend Recall 均无增益，整体 NDCG@5
+0.7063 -> 0.7012，因此未通过启用门槛，`GRAPH_RAG_ENABLED` 保持默认关闭。
 
 ### 各题型表现
 

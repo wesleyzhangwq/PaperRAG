@@ -20,9 +20,9 @@ settings = get_settings()
 configure_logging(json_logs=settings.observability_json_logs)
 
 app = FastAPI(
-    title="PaperRAG",
+    title="Cite Scope",
     version="0.1.0",
-    description="arXiv RAG with MySQL + Qdrant + cloud LLM/Embedding APIs.",
+    description="Agentic research assistant for cited arXiv paper Q&A with MySQL, Qdrant, and cloud LLM/Embedding APIs.",
 )
 
 app.add_middleware(

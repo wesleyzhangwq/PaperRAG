@@ -1,4 +1,4 @@
-"""arXiv ID import helpers for PaperRAG uploads."""
+"""arXiv ID import helpers for Cite Scope uploads."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -15,7 +15,7 @@ from app.core.config import get_settings
 settings = get_settings()
 
 _ARXIV_ID_RE = re.compile(r"(?P<id>\d{4}\.\d{4,6})(?:v\d+)?", re.IGNORECASE)
-_USER_AGENT = "PaperRAG/0.1 (https://github.com/; mailto:dev@paperrag.local)"
+_USER_AGENT = "CiteScope/0.1 (https://github.com/; mailto:dev@citescope.local)"
 _HTTP_TIMEOUT = 60
 _METADATA_TIMEOUT = 20
 

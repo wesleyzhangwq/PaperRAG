@@ -11,10 +11,10 @@ public class DeterministicLlmProvider implements LlmProvider {
     @Override
     public String answer(String question, List<SourceResponse> sources) {
         if (sources.isEmpty()) {
-            return "I could not find relevant PaperRAG context for: " + question;
+            return "I could not find relevant Cite Scope context for: " + question;
         }
         SourceResponse first = sources.getFirst();
-        return "Based on the retrieved PaperRAG chunks, " + first.content()
+        return "Based on the retrieved Cite Scope chunks, " + first.content()
             + " [chunk:" + first.chunkId() + "]";
     }
 }

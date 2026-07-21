@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     llm_api_base: str = "https://api.minimax.chat/v1"
     llm_api_key: Optional[str] = None
 
-    # --- Cloud Embedding (Alibaba) ---
+    # --- Cloud Embedding (SiliconFlow by default) ---
     embedding_model: str = "BAAI/bge-m3"
     embedding_api_base: str = "https://api.siliconflow.cn/v1"
     embedding_api_key: Optional[str] = None

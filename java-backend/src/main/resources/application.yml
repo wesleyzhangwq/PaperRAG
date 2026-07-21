@@ -9,7 +9,7 @@ management:
 
 spring:
   application:
-    name: paperrag-java
+    name: cite-scope-java
   datasource:
     url: ${MYSQL_URL:jdbc:mysql://localhost:3306/paperrag?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC}
     username: ${MYSQL_USER:root}

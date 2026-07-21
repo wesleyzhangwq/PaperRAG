@@ -1,4 +1,4 @@
-"""Build a focused AI landmark corpus for PaperRAG.
+"""Build a focused AI landmark corpus for Cite Scope.
 
 The corpus is intentionally vertical: LLM / RAG / Agents / evaluation first,
 with enough AI history papers to make cross-era questions meaningful.
@@ -36,7 +36,7 @@ METADATA_JSON = DATA_DIR / "metadata_filtered.json"
 CANDIDATES_JSON = RAW_DIR / "ai_landmark_candidates.json"
 SKIPPED_JSON = RAW_DIR / "ai_landmark_skipped.json"
 
-UA = "PaperRAG/1.0 (curated AI landmark corpus; mailto:dev@paperrag.local)"
+UA = "CiteScope/1.0 (curated AI landmark corpus; mailto:dev@citescope.local)"
 HTTP_TIMEOUT = 45
 MAX_RETRIES = 3
 LIST_SLEEP_SEC = 0.35
@@ -452,7 +452,7 @@ def build_importance_reason(candidate: Candidate) -> str:
         "evaluation_factuality": "evaluation, factuality, or benchmark design",
     }.get(candidate.bucket, candidate.bucket)
     prefix = "Seed landmark" if candidate.seed else "Curated arXiv paper"
-    return f"{prefix} for {label}; selected for PaperRAG vertical evaluation."
+    return f"{prefix} for {label}; selected for Cite Scope vertical evaluation."
 
 
 def build_candidate_pool() -> list[Candidate]:
@@ -544,7 +544,7 @@ def write_json(path: Path, payload: object) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Curate AI landmark corpus for PaperRAG.")
+    parser = argparse.ArgumentParser(description="Curate AI landmark corpus for Cite Scope.")
     parser.add_argument("--target", type=int, default=500)
     parser.add_argument("--oversample", type=int, default=180)
     parser.add_argument("--workers", type=int, default=6)

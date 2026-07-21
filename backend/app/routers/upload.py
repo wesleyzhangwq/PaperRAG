@@ -1,4 +1,4 @@
-"""Import papers into the local PaperRAG corpus."""
+"""Import papers into the local Cite Scope corpus."""
 from __future__ import annotations
 
 import uuid

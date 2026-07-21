@@ -28,7 +28,7 @@ FAILED_TXT = DATA_DIR / "failed.txt"
 CATEGORIES = ["cs.AI", "cs.CL", "cs.LG"]
 MIN_YEAR = 2023
 
-UA = "PaperRAG/0.1 (https://github.com/; mailto:dev@paperrag.local)"
+UA = "CiteScope/0.1 (https://github.com/; mailto:dev@citescope.local)"
 SLEEP_BETWEEN_DOWNLOADS = 3.0
 HTTP_TIMEOUT = 60
 MAX_RETRIES = 2
@@ -126,7 +126,7 @@ def download_pdfs(records: Iterable[dict]) -> tuple[list[dict], list[str]]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Download arXiv papers for PaperRAG.")
+    parser = argparse.ArgumentParser(description="Download arXiv papers for Cite Scope.")
     parser.add_argument("--limit", type=int, default=50, help="Number of papers (default 50).")
     parser.add_argument("--skip-download", action="store_true", help="Only fetch metadata.")
     args = parser.parse_args()

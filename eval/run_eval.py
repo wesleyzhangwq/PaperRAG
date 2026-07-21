@@ -1,4 +1,4 @@
-"""Run PaperRAG eval: call /chat for each question, compute metrics, append CSV.
+"""Run Cite Scope eval: call /chat for each question, compute metrics, append CSV.
 
 Usage:
     cd backend
@@ -269,7 +269,7 @@ def append_summary(path: Path, row: dict) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run PaperRAG eval.")
+    parser = argparse.ArgumentParser(description="Run Cite Scope eval.")
     parser.add_argument("--dataset", type=str, default=str(PROJECT_ROOT / "eval/datasets/questions_v2.jsonl"))
     parser.add_argument("--summary-csv", type=str, default=str(PROJECT_ROOT / "eval/results/summary.csv"))
     parser.add_argument("--detail-json", type=str, default=None)

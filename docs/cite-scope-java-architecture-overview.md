@@ -1,12 +1,12 @@
-# PaperRAG Java Backend Architecture Overview
+# Cite Scope Java Backend Architecture Overview
 
 > Review target: `/Users/wesz_station/Projects/PaperRAG/java-backend`
 >
-> Scope: 这是基于 `paperrag_java_learning_roadmap_html.html` 推进出的 Java/Spring Boot 后端迭代版本。它不是对现有 Python/FastAPI 后端的逐行翻译，而是用 Java 后端工程边界重新实现 PaperRAG 的核心能力。
+> Scope: 这是基于 `paperrag_java_learning_roadmap_html.html` 推进出的 Java/Spring Boot 后端迭代版本。它不是对现有 Python/FastAPI 后端的逐行翻译，而是用 Java 后端工程边界重新实现 Cite Scope 的核心能力。
 
 ## 1. 当前结论
 
-PaperRAG Java backend 当前已经形成一个可运行、可测试的后端雏形：
+Cite Scope Java backend 当前已经形成一个可运行、可测试的后端雏形：
 
 - 已完成 Spring Boot 基础骨架、统一响应、异常处理、traceId、配置绑定。
 - 已完成 MyBatis-Plus + SQL schema + paper/chunk/task/eval 相关持久化。
@@ -320,9 +320,8 @@ Date: 2026-06-02
 
 ## 11. Main Review Questions
 
-- Java backend 是否应该继续保留在独立 `java-backend/`，还是开始和原 PaperRAG backend/frontend 设计集成边界？
+- Java backend 是否应该继续保留在独立 `java-backend/`，还是开始和 Cite Scope backend/frontend 设计集成边界？
 - 下一步优先补真实外部系统接入，还是补完整 agent graph 能力？
 - tenant isolation 是先做 MyBatis interceptor，还是先限制在核心业务 service 内？
 - hybrid retrieval 下一步是否应该落 MySQL FULLTEXT/ngram，还是直接引入 Lucene/Elasticsearch？
 - eval 下一步是否优先做真实 ground-truth dataset，还是先做 load testing harness？
-

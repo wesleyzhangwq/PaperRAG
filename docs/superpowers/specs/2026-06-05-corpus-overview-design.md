@@ -2,7 +2,7 @@
 
 ## Goal
 
-Show users what the current PaperRAG corpus roughly contains before they ask a question.
+Show users what the current Cite Scope corpus roughly contains before they ask a question.
 
 The overview appears in the new-conversation chat window, replacing the current empty state text. It should make the corpus feel inspectable and trustworthy without forcing users to open the paper library page.
 
@@ -203,7 +203,7 @@ The card should feel like a product overview, not a dashboard:
 - no nested cards
 - no large marketing hero
 
-The component should match the existing PaperRAG palette and restrained tool UI style.
+The component should match the existing Cite Scope palette and restrained tool UI style.
 
 ## Testing
 
@@ -234,4 +234,3 @@ Implement in one narrow PR:
 5. Focused tests and a browser smoke check.
 
 The feature is safe to ship because it is read-only and does not change retrieval or answer generation.
-

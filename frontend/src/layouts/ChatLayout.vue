@@ -7,7 +7,7 @@
     >
       <!-- Brand + new chat -->
       <div class="px-4 py-3 flex items-center justify-between">
-        <h1 class="text-[15px] font-semibold text-text-primary tracking-tight">PaperRAG</h1>
+        <h1 class="text-[15px] font-semibold text-text-primary tracking-tight">Cite Scope</h1>
         <button
           @click="newChat"
           title="新建对话"
@@ -135,8 +135,8 @@ const themeLabel = computed(() =>
   theme.theme === 'light' ? '日间模式' : '夜间模式'
 )
 const headerTitle = computed(() => {
-  if (activeView.value === 'chat') return convs.active?.title || 'Agentic RAG Paper Assistant'
-  return navItems.find(item => item.key === activeView.value)?.label || 'PaperRAG'
+  if (activeView.value === 'chat') return convs.active?.title || 'Cite Scope'
+  return navItems.find(item => item.key === activeView.value)?.label || 'Cite Scope'
 })
 
 onMounted(async () => {

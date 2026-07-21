@@ -1,7 +1,7 @@
-# PaperRAG
+# Cite Scope
 
 <p align="center">
-  <strong>Agentic RAG for academic paper Q&A</strong>
+  <strong>Agentic research assistant for cited paper Q&A</strong>
 </p>
 
 <p align="center">
@@ -19,7 +19,7 @@
   <img alt="License" src="https://img.shields.io/badge/License-MIT-blue">
 </p>
 
-PaperRAG 是一个面向学术论文问答的 **Agentic RAG** 系统。它把 arXiv 或用户上传的 PDF 解析入库，通过 Qdrant + MySQL 管理论文、片段和会话，再用 LangGraph Agent 进行意图分析、动态规划、多源检索、资料充分性评估、自我反思和带引用回答生成。
+Cite Scope 是一个面向学术论文问答的 **Agentic RAG** 系统。它通过 arXiv ID/URL 拉取官方 metadata 和 PDF，解析入库后用 Qdrant + MySQL 管理论文、片段和会话，再用 LangGraph Agent 进行意图分析、动态规划、多源检索、资料充分性评估、自我反思和带引用回答生成。
 
 这个项目的目标不是做一个最短链路的聊天壳，而是展示一个可解释、可调试、可扩展的论文研究助手：用户能看到系统检索了什么、为什么补充检索、哪些论文被引用、回答可信度为什么高或低。
 
@@ -34,7 +34,7 @@ PaperRAG 是一个面向学术论文问答的 **Agentic RAG** 系统。它把 ar
 - **Transparent execution**: 前端通过 SSE 展示每一步耗时、参数、结果摘要、检索片段和调试详情。
 - **Corpus overview**: 新对话和论文库页面可以展示当前 RAG 语料库的主题分布、代表论文和建议问题。
 - **Cited answers**: 回答保留论文来源卡片和 citation popover，便于回到 arXiv / PDF 证据。
-- **Operational basics**: SQLite LangGraph checkpoint、会话历史、反馈接口、异步上传任务、API key 鉴权和限流中间件。
+- **Operational basics**: SQLite LangGraph checkpoint、会话历史、反馈接口、异步 arXiv 导入任务、API key 鉴权和限流中间件。
 - **Optional web search**: Tavily 作为可选补充检索，未配置或网络失败时会降级，不阻断本地 RAG。
 
 ---
@@ -45,7 +45,7 @@ PaperRAG 是一个面向学术论文问答的 **Agentic RAG** 系统。它把 ar
 | --- | --- |
 | Chat | 提问、流式回答、查看执行步骤、引用来源和调试详情 |
 | Papers | 浏览已入库论文、检索论文、查看语料库主题 overview |
-| Uploads | 上传本地 PDF，后台异步解析和入库 |
+| Uploads | 输入 arXiv ID 或 URL，后台拉取 metadata/PDF 并异步入库 |
 | Settings | 查看后端连接、模型和基础配置状态 |
 | Feedback | 对回答标记有帮助 / 需改进，为后续评估闭环保留数据 |
 
@@ -258,7 +258,8 @@ See [.env.example](.env.example) for the full list.
 | `GET /conversations/{id}/messages` | load persisted messages |
 | `GET /papers` | list/search ingested papers |
 | `GET /papers/overview` | corpus topic overview |
-| `POST /upload` | queue PDF upload and background ingest |
+| `POST /upload/arxiv` | queue arXiv ID/URL import and background ingest |
+| `POST /upload` | disabled legacy local PDF upload endpoint |
 | `GET /upload/jobs` | list upload jobs |
 | `POST /feedback` | store answer feedback |
 | `POST /ingest` | admin ingestion endpoint |
@@ -298,10 +299,10 @@ The test suite mocks LLM and database boundaries. It should not call real LLM, e
 | [AGENTS.md](AGENTS.md) | Architecture, design philosophy, agent flow and contributor conventions |
 | [CLAUDE.md](CLAUDE.md) | Short agent context for future coding sessions |
 | [eval/README.md](eval/README.md) | Evaluation framework and retrieval tuning notes |
-| [docs/paperrag-java-architecture-overview.md](docs/paperrag-java-architecture-overview.md) | High-level architecture review and roadmap status |
-| [docs/paperrag-defect-verification.md](docs/paperrag-defect-verification.md) | Defect verification notes |
-| [docs/paperrag-update-plan.md](docs/paperrag-update-plan.md) | Iteration plan |
-| [docs/paperrag-execution-acceptance.md](docs/paperrag-execution-acceptance.md) | Acceptance notes |
+| [docs/cite-scope-java-architecture-overview.md](docs/cite-scope-java-architecture-overview.md) | High-level architecture review and roadmap status |
+| [docs/cite-scope-defect-verification.md](docs/cite-scope-defect-verification.md) | Defect verification notes |
+| [docs/cite-scope-update-plan.md](docs/cite-scope-update-plan.md) | Iteration plan |
+| [docs/cite-scope-execution-acceptance.md](docs/cite-scope-execution-acceptance.md) | Acceptance notes |
 
 ---
 
@@ -320,16 +321,17 @@ The test suite mocks LLM and database boundaries. It should not call real LLM, e
 - You need your own LLM and embedding API keys before the full RAG path can run.
 - Tavily web search is optional. Local retrieval remains the primary path.
 - API authentication is configurable and disabled by default for local development. Enable it before public deployment.
+- Some legacy internal identifiers for existing databases, collections, metrics, packages and browser storage are intentionally retained for compatibility.
 
 ---
 
 ## English
 
-PaperRAG is an **Agentic RAG system for academic paper Q&A**. It ingests arXiv or uploaded PDFs, stores paper metadata and chunks in MySQL, indexes chunk embeddings in Qdrant, and uses a LangGraph agent to plan retrieval, evaluate evidence, synthesize cited answers, and self-reflect before returning the final response.
+Cite Scope is an **Agentic RAG system for academic paper Q&A**. It imports arXiv metadata and PDFs from arXiv IDs or URLs, stores paper metadata and chunks in MySQL, indexes chunk embeddings in Qdrant, and uses a LangGraph agent to plan retrieval, evaluate evidence, synthesize cited answers, and self-reflect before returning the final response.
 
 ### Why this project exists
 
-PaperRAG is designed as a portfolio-grade, explainable research assistant. Instead of hiding retrieval behind a black box, it exposes execution steps, retrieved chunks, source cards, citation details, confidence reasons and debug traces in the UI.
+Cite Scope is designed as a portfolio-grade, explainable research assistant. Instead of hiding retrieval behind a black box, it exposes execution steps, retrieved chunks, source cards, citation details, confidence reasons and debug traces in the UI.
 
 ### Key capabilities
 
@@ -338,7 +340,7 @@ PaperRAG is designed as a portfolio-grade, explainable research assistant. Inste
 - Optional Tavily web search for evidence supplementation.
 - SSE streaming for live answer tokens and execution-step updates.
 - Persistent conversations, chat history and LangGraph checkpoints.
-- PDF upload queue with background ingestion.
+- arXiv ID/URL import queue with background ingestion.
 - Corpus overview for topic buckets, representative papers and suggested questions.
 - Vue 3 frontend with source cards, citation popovers and debug panels.
 
@@ -393,4 +395,4 @@ Open `http://localhost:5173`.
 
 ### License
 
-PaperRAG is released under the [MIT License](LICENSE).
+Cite Scope is released under the [MIT License](LICENSE).

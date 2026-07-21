@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a read-only corpus overview card to the empty chat state so users can see what the current PaperRAG corpus contains before asking a question.
+**Goal:** Add a read-only corpus overview card to the empty chat state so users can see what the current Cite Scope corpus contains before asking a question.
 
 **Architecture:** The backend exposes a cheap SQL-only `GET /papers/overview` endpoint that aggregates paper and chunk metadata. The frontend loads the overview in `ChatView`, renders a `CorpusOverviewCard` only when the active conversation has no messages, and lets suggested-question chips fill the input box.
 

@@ -1,0 +1,56 @@
+{
+  "schema_version": "1.0",
+  "run_id": "paperrag-real-provider-blocked-v3-20260721",
+  "status": "blocked",
+  "started_at": null,
+  "blocked_at": "2026-07-21T08:32:24.437387+00:00",
+  "finished_at": "2026-07-21T08:32:24.437387+00:00",
+  "entrypoint_if_unblocked": "eval/run_agentic_rag_eval.py",
+  "git": {
+    "commit": "320ccb7a3917833f2729d5e1cb53deaf5d1452bc",
+    "dirty": false,
+    "dirty_entry_count": 0
+  },
+  "dataset": "/Users/wesz_station/Projects/PaperRAG/eval/datasets/questions_501_test_200.jsonl",
+  "dataset_sha256": "30f3fec3850e80a8c66cc9aa55504784d32c716c89eff5a98b87e471a16e96ba",
+  "sample_count": 0,
+  "provider": "minimax",
+  "models": [
+    "MiniMax-M3"
+  ],
+  "non_sensitive_config": {
+    "concurrency": 1,
+    "warmup": false,
+    "request_timeout_s": 120,
+    "external_api_allowed": false
+  },
+  "execution": {
+    "command": "/Users/wesz_station/Projects/PaperRAG/backend/.venv/bin/python eval/write_blocked_real_benchmark.py --run-id paperrag-real-provider-blocked-v3-20260721",
+    "external_requests": 0,
+    "real_provider_invoked": false
+  },
+  "pricing": {
+    "catalog_path": "/Users/wesz_station/Projects/PaperRAG/eval/pricing/llm-pricing-2026-07-21.json",
+    "catalog_version": "minimax-paygo-2026-07-21",
+    "source": "https://platform.minimax.io/docs/guides/pricing-paygo",
+    "billing_origin": "unverified",
+    "models_without_safe_billable_mapping": [
+      "MiniMax-M3"
+    ],
+    "mapping_status": "incomplete_or_ambiguous",
+    "mapping_limitations": [
+      "configured_endpoint_billing_origin_unverified",
+      "m3_context_tier_and_cache_usage_dimensions_not_safely_attributable"
+    ],
+    "cost_scope": "llm_only"
+  },
+  "blockers": [
+    "billing_origin_unverified",
+    "provider_usage_dimensions_insufficient_for_exact_cost",
+    "safe_exact_cost_cap_unavailable"
+  ],
+  "environment": {
+    "python": "3.12.8",
+    "platform": "macOS-26.5.2-arm64-arm-64bit"
+  }
+}

@@ -1,0 +1,493 @@
+{
+  "schema_version": "1.0",
+  "scenario_count": 10,
+  "scenario_passed_count": 10,
+  "scenario_pass_rate": 1.0,
+  "outcome_counts": {
+    "recovered": 7,
+    "safe_degraded": 2,
+    "terminal_failure": 1
+  },
+  "failure_class_counts": {
+    "local_retrieval_empty": 2,
+    "evidence_insufficient": 3,
+    "local_retrieval_exception": 1,
+    "arxiv_service_unavailable": 1,
+    "web_service_unavailable": 1,
+    "planner_output_unparseable": 1,
+    "sufficiency_output_unparseable": 1,
+    "llm_timeout": 1,
+    "groundedness_check_failed": 2,
+    "supplement_retrieval_budget_exhausted": 1,
+    "terminal_exception": 1
+  },
+  "task_metrics": {
+    "count": 10,
+    "count_positive": 10,
+    "count_negative": 0,
+    "mode_accuracy": 0.7,
+    "task_success_rate": 0.7,
+    "expected_source_hit_rate": 0.8,
+    "terminal_failure_rate": 0.1,
+    "source_hit": 0.8,
+    "source_recall": 0.8,
+    "source_precision": 0.8,
+    "citation_support_rate": 1.0,
+    "citation_support_n": 8,
+    "citation_supported_count": 8,
+    "citation_total_count": 8,
+    "citation_support_micro_rate": 1.0,
+    "citation_precision": 0.8,
+    "citation_expected_hit": 0.8,
+    "used_chunks_mean": null,
+    "step_count_mean": 11.2,
+    "retrieval_step_count_mean": 1.5,
+    "latency_p50": 0.0104,
+    "latency_p90": 0.0116,
+    "latency_p95": 0.0137,
+    "latency_mean": 0.0105,
+    "latency_n": 10,
+    "latency_by_path": {
+      "normal": {
+        "n": 0,
+        "p50": null,
+        "p90": null,
+        "p95": null,
+        "mean": null
+      },
+      "fallback": {
+        "n": 9,
+        "p50": 0.0107,
+        "p90": 0.0137,
+        "p95": 0.0137,
+        "mean": 0.0107
+      },
+      "terminal": {
+        "n": 1,
+        "p50": 0.0089,
+        "p90": 0.0089,
+        "p95": 0.0089,
+        "mean": 0.0089
+      }
+    },
+    "stage_latency": {
+      "citation_gate": {
+        "n": 9,
+        "p50_ms": 0.11,
+        "p90_ms": 0.31,
+        "p95_ms": 0.31,
+        "mean_ms": 0.1356
+      },
+      "evidence_process": {
+        "n": 13,
+        "p50_ms": 0.06,
+        "p90_ms": 0.07,
+        "p95_ms": 0.09,
+        "mean_ms": 0.0638
+      },
+      "groundedness_check": {
+        "n": 11,
+        "p50_ms": 0.1,
+        "p90_ms": 0.11,
+        "p95_ms": 0.11,
+        "mean_ms": 0.1045
+      },
+      "guard": {
+        "n": 9,
+        "p50_ms": 0.07,
+        "p90_ms": 0.11,
+        "p95_ms": 0.11,
+        "mean_ms": 0.0722
+      },
+      "intent_analysis": {
+        "n": 9,
+        "p50_ms": 0.11,
+        "p90_ms": 0.2,
+        "p95_ms": 0.2,
+        "mean_ms": 0.12
+      },
+      "planning": {
+        "n": 9,
+        "p50_ms": 0.14,
+        "p90_ms": 0.23,
+        "p95_ms": 0.23,
+        "mean_ms": 0.15
+      },
+      "re_planning": {
+        "n": 4,
+        "p50_ms": 0.14,
+        "p90_ms": 0.16,
+        "p95_ms": 0.16,
+        "mean_ms": 0.1475
+      },
+      "reasoning_synthesis": {
+        "n": 11,
+        "p50_ms": 0.17,
+        "p90_ms": 0.17,
+        "p95_ms": 0.18,
+        "mean_ms": 0.1673
+      },
+      "retrieve_arxiv": {
+        "n": 1,
+        "p50_ms": 0.01,
+        "p90_ms": 0.01,
+        "p95_ms": 0.01,
+        "mean_ms": 0.01
+      },
+      "retrieve_local": {
+        "n": 13,
+        "p50_ms": 0.03,
+        "p90_ms": 0.04,
+        "p95_ms": 0.05,
+        "mean_ms": 0.0308
+      },
+      "route": {
+        "n": 9,
+        "p50_ms": 0.06,
+        "p90_ms": 0.07,
+        "p95_ms": 0.07,
+        "mean_ms": 0.0611
+      },
+      "search_web": {
+        "n": 1,
+        "p50_ms": 0.01,
+        "p90_ms": 0.01,
+        "p95_ms": 0.01,
+        "mean_ms": 0.01
+      },
+      "sufficiency_check": {
+        "n": 13,
+        "p50_ms": 0.1,
+        "p90_ms": 0.11,
+        "p95_ms": 0.11,
+        "mean_ms": 0.0885
+      }
+    },
+    "fallback_attempted_count": 9,
+    "fallback_recovered_count": 7,
+    "fallback_recovery_rate": 0.7778,
+    "degraded_answer_rate": 0.2,
+    "cost_known_n": 0,
+    "cost_unknown_n": 10,
+    "cost_per_task_mean_usd": null,
+    "cost_per_task_p50_usd": null,
+    "cost_per_task_p95_usd": null,
+    "successful_task_cost_mean_usd": null,
+    "fallback_task_cost_mean_usd": null,
+    "error_count": 1,
+    "by_type": {
+      "failure_injection": {
+        "count": 10,
+        "count_positive": 10,
+        "count_negative": 0,
+        "mode_accuracy": 0.7,
+        "task_success_rate": 0.7,
+        "expected_source_hit_rate": 0.8,
+        "terminal_failure_rate": 0.1,
+        "source_hit": 0.8,
+        "source_recall": 0.8,
+        "source_precision": 0.8,
+        "citation_support_rate": 1.0,
+        "citation_support_n": 8,
+        "citation_supported_count": 8,
+        "citation_total_count": 8,
+        "citation_support_micro_rate": 1.0,
+        "citation_precision": 0.8,
+        "citation_expected_hit": 0.8,
+        "used_chunks_mean": null,
+        "step_count_mean": 11.2,
+        "retrieval_step_count_mean": 1.5,
+        "latency_p50": 0.0104,
+        "latency_p90": 0.0116,
+        "latency_p95": 0.0137,
+        "latency_mean": 0.0105,
+        "latency_n": 10,
+        "latency_by_path": {
+          "normal": {
+            "n": 0,
+            "p50": null,
+            "p90": null,
+            "p95": null,
+            "mean": null
+          },
+          "fallback": {
+            "n": 9,
+            "p50": 0.0107,
+            "p90": 0.0137,
+            "p95": 0.0137,
+            "mean": 0.0107
+          },
+          "terminal": {
+            "n": 1,
+            "p50": 0.0089,
+            "p90": 0.0089,
+            "p95": 0.0089,
+            "mean": 0.0089
+          }
+        },
+        "stage_latency": {
+          "citation_gate": {
+            "n": 9,
+            "p50_ms": 0.11,
+            "p90_ms": 0.31,
+            "p95_ms": 0.31,
+            "mean_ms": 0.1356
+          },
+          "evidence_process": {
+            "n": 13,
+            "p50_ms": 0.06,
+            "p90_ms": 0.07,
+            "p95_ms": 0.09,
+            "mean_ms": 0.0638
+          },
+          "groundedness_check": {
+            "n": 11,
+            "p50_ms": 0.1,
+            "p90_ms": 0.11,
+            "p95_ms": 0.11,
+            "mean_ms": 0.1045
+          },
+          "guard": {
+            "n": 9,
+            "p50_ms": 0.07,
+            "p90_ms": 0.11,
+            "p95_ms": 0.11,
+            "mean_ms": 0.0722
+          },
+          "intent_analysis": {
+            "n": 9,
+            "p50_ms": 0.11,
+            "p90_ms": 0.2,
+            "p95_ms": 0.2,
+            "mean_ms": 0.12
+          },
+          "planning": {
+            "n": 9,
+            "p50_ms": 0.14,
+            "p90_ms": 0.23,
+            "p95_ms": 0.23,
+            "mean_ms": 0.15
+          },
+          "re_planning": {
+            "n": 4,
+            "p50_ms": 0.14,
+            "p90_ms": 0.16,
+            "p95_ms": 0.16,
+            "mean_ms": 0.1475
+          },
+          "reasoning_synthesis": {
+            "n": 11,
+            "p50_ms": 0.17,
+            "p90_ms": 0.17,
+            "p95_ms": 0.18,
+            "mean_ms": 0.1673
+          },
+          "retrieve_arxiv": {
+            "n": 1,
+            "p50_ms": 0.01,
+            "p90_ms": 0.01,
+            "p95_ms": 0.01,
+            "mean_ms": 0.01
+          },
+          "retrieve_local": {
+            "n": 13,
+            "p50_ms": 0.03,
+            "p90_ms": 0.04,
+            "p95_ms": 0.05,
+            "mean_ms": 0.0308
+          },
+          "route": {
+            "n": 9,
+            "p50_ms": 0.06,
+            "p90_ms": 0.07,
+            "p95_ms": 0.07,
+            "mean_ms": 0.0611
+          },
+          "search_web": {
+            "n": 1,
+            "p50_ms": 0.01,
+            "p90_ms": 0.01,
+            "p95_ms": 0.01,
+            "mean_ms": 0.01
+          },
+          "sufficiency_check": {
+            "n": 13,
+            "p50_ms": 0.1,
+            "p90_ms": 0.11,
+            "p95_ms": 0.11,
+            "mean_ms": 0.0885
+          }
+        },
+        "fallback_attempted_count": 9,
+        "fallback_recovered_count": 7,
+        "fallback_recovery_rate": 0.7778,
+        "degraded_answer_rate": 0.2,
+        "cost_known_n": 0,
+        "cost_unknown_n": 10,
+        "cost_per_task_mean_usd": null,
+        "cost_per_task_p50_usd": null,
+        "cost_per_task_p95_usd": null,
+        "successful_task_cost_mean_usd": null,
+        "fallback_task_cost_mean_usd": null,
+        "error_count": 1
+      }
+    },
+    "by_difficulty": {
+      "deterministic": {
+        "count": 10,
+        "count_positive": 10,
+        "count_negative": 0,
+        "mode_accuracy": 0.7,
+        "task_success_rate": 0.7,
+        "expected_source_hit_rate": 0.8,
+        "terminal_failure_rate": 0.1,
+        "source_hit": 0.8,
+        "source_recall": 0.8,
+        "source_precision": 0.8,
+        "citation_support_rate": 1.0,
+        "citation_support_n": 8,
+        "citation_supported_count": 8,
+        "citation_total_count": 8,
+        "citation_support_micro_rate": 1.0,
+        "citation_precision": 0.8,
+        "citation_expected_hit": 0.8,
+        "used_chunks_mean": null,
+        "step_count_mean": 11.2,
+        "retrieval_step_count_mean": 1.5,
+        "latency_p50": 0.0104,
+        "latency_p90": 0.0116,
+        "latency_p95": 0.0137,
+        "latency_mean": 0.0105,
+        "latency_n": 10,
+        "latency_by_path": {
+          "normal": {
+            "n": 0,
+            "p50": null,
+            "p90": null,
+            "p95": null,
+            "mean": null
+          },
+          "fallback": {
+            "n": 9,
+            "p50": 0.0107,
+            "p90": 0.0137,
+            "p95": 0.0137,
+            "mean": 0.0107
+          },
+          "terminal": {
+            "n": 1,
+            "p50": 0.0089,
+            "p90": 0.0089,
+            "p95": 0.0089,
+            "mean": 0.0089
+          }
+        },
+        "stage_latency": {
+          "citation_gate": {
+            "n": 9,
+            "p50_ms": 0.11,
+            "p90_ms": 0.31,
+            "p95_ms": 0.31,
+            "mean_ms": 0.1356
+          },
+          "evidence_process": {
+            "n": 13,
+            "p50_ms": 0.06,
+            "p90_ms": 0.07,
+            "p95_ms": 0.09,
+            "mean_ms": 0.0638
+          },
+          "groundedness_check": {
+            "n": 11,
+            "p50_ms": 0.1,
+            "p90_ms": 0.11,
+            "p95_ms": 0.11,
+            "mean_ms": 0.1045
+          },
+          "guard": {
+            "n": 9,
+            "p50_ms": 0.07,
+            "p90_ms": 0.11,
+            "p95_ms": 0.11,
+            "mean_ms": 0.0722
+          },
+          "intent_analysis": {
+            "n": 9,
+            "p50_ms": 0.11,
+            "p90_ms": 0.2,
+            "p95_ms": 0.2,
+            "mean_ms": 0.12
+          },
+          "planning": {
+            "n": 9,
+            "p50_ms": 0.14,
+            "p90_ms": 0.23,
+            "p95_ms": 0.23,
+            "mean_ms": 0.15
+          },
+          "re_planning": {
+            "n": 4,
+            "p50_ms": 0.14,
+            "p90_ms": 0.16,
+            "p95_ms": 0.16,
+            "mean_ms": 0.1475
+          },
+          "reasoning_synthesis": {
+            "n": 11,
+            "p50_ms": 0.17,
+            "p90_ms": 0.17,
+            "p95_ms": 0.18,
+            "mean_ms": 0.1673
+          },
+          "retrieve_arxiv": {
+            "n": 1,
+            "p50_ms": 0.01,
+            "p90_ms": 0.01,
+            "p95_ms": 0.01,
+            "mean_ms": 0.01
+          },
+          "retrieve_local": {
+            "n": 13,
+            "p50_ms": 0.03,
+            "p90_ms": 0.04,
+            "p95_ms": 0.05,
+            "mean_ms": 0.0308
+          },
+          "route": {
+            "n": 9,
+            "p50_ms": 0.06,
+            "p90_ms": 0.07,
+            "p95_ms": 0.07,
+            "mean_ms": 0.0611
+          },
+          "search_web": {
+            "n": 1,
+            "p50_ms": 0.01,
+            "p90_ms": 0.01,
+            "p95_ms": 0.01,
+            "mean_ms": 0.01
+          },
+          "sufficiency_check": {
+            "n": 13,
+            "p50_ms": 0.1,
+            "p90_ms": 0.11,
+            "p95_ms": 0.11,
+            "mean_ms": 0.0885
+          }
+        },
+        "fallback_attempted_count": 9,
+        "fallback_recovered_count": 7,
+        "fallback_recovery_rate": 0.7778,
+        "degraded_answer_rate": 0.2,
+        "cost_known_n": 0,
+        "cost_unknown_n": 10,
+        "cost_per_task_mean_usd": null,
+        "cost_per_task_p50_usd": null,
+        "cost_per_task_p95_usd": null,
+        "successful_task_cost_mean_usd": null,
+        "fallback_task_cost_mean_usd": null,
+        "error_count": 1
+      }
+    }
+  }
+}

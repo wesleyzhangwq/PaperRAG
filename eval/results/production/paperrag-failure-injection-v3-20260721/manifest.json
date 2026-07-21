@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "run_id": "paperrag-failure-injection-v3-20260721",
+  "started_at": "2026-07-21T08:32:23.204733+00:00",
+  "finished_at": "2026-07-21T08:32:23.971023+00:00",
+  "entrypoint": "app.agent.graph.run_agent_eval_sync",
+  "git": {
+    "commit": "320ccb7a3917833f2729d5e1cb53deaf5d1452bc",
+    "dirty": false,
+    "dirty_entry_count": 0
+  },
+  "dataset": "embedded deterministic failure scenarios",
+  "dataset_sha256": "5acd204c8b9f75ecde8388fe8c3b07f3f80e8bf94c9275291840deaf030df600",
+  "sample_count": 10,
+  "model": "deterministic provider fixture",
+  "provider": "deterministic fixture",
+  "non_sensitive_config": {
+    "concurrency": 1,
+    "warmup": false,
+    "timeout_s": 120,
+    "external_api_calls": 0,
+    "agent_max_reflections": 2,
+    "sufficiency_round_budget": 1
+  },
+  "pricing_catalog_version": "minimax-paygo-2026-07-21",
+  "pricing_source": "https://platform.minimax.io/docs/guides/pricing-paygo",
+  "billing_origin": "deterministic_fixture_unpriced",
+  "cost_scope": "llm_only",
+  "command": "/Users/wesz_station/Projects/PaperRAG/backend/.venv/bin/python eval/run_failure_injection_eval.py --run-id paperrag-failure-injection-v3-20260721",
+  "environment": {
+    "python": "3.12.8",
+    "platform": "macOS-26.5.2-arm64-arm-64bit"
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "schema_version": "1.0",
+  "status": "blocked",
+  "sample_count": 0,
+  "external_requests": 0,
+  "metrics_status": "unknown",
+  "blocked_reasons": [
+    "billing_origin_unverified",
+    "provider_usage_dimensions_insufficient_for_exact_cost",
+    "safe_exact_cost_cap_unavailable"
+  ],
+  "task_metrics": {
+    "count": 0,
+    "count_positive": 0,
+    "count_negative": 0,
+    "task_success_rate": null,
+    "mode_accuracy": null,
+    "citation_support_rate": null,
+    "citation_support_n": 0,
+    "expected_source_hit_rate": null,
+    "terminal_failure_rate": null,
+    "latency_p50": null,
+    "latency_p90": null,
+    "latency_p95": null,
+    "latency_mean": null,
+    "latency_n": 0,
+    "latency_by_path": {
+      "normal": {
+        "n": 0,
+        "p50": null,
+        "p90": null,
+        "p95": null,
+        "mean": null
+      },
+      "fallback": {
+        "n": 0,
+        "p50": null,
+        "p90": null,
+        "p95": null,
+        "mean": null
+      },
+      "terminal": {
+        "n": 0,
+        "p50": null,
+        "p90": null,
+        "p95": null,
+        "mean": null
+      }
+    },
+    "stage_latency": {},
+    "fallback_attempted_count": 0,
+    "fallback_recovered_count": 0,
+    "fallback_recovery_rate": null,
+    "cost_known_n": 0,
+    "cost_unknown_n": 0,
+    "cost_per_task_mean_usd": null,
+    "cost_per_task_p50_usd": null,
+    "cost_per_task_p95_usd": null,
+    "successful_task_cost_mean_usd": null,
+    "fallback_task_cost_mean_usd": null,
+    "by_type": {},
+    "by_difficulty": {}
+  }
+}

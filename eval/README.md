@@ -180,11 +180,11 @@ backend/.venv/bin/python eval/scripts/repair_agentic_compare_run.py \
 ```bash
 # 确定性生产图故障注入：10 个场景、无网络、无外部 API 请求
 PYTHONPATH=. backend/.venv/bin/python eval/run_failure_injection_eval.py \
-  --run-id paperrag-failure-injection-v1-20260721
+  --run-id paperrag-failure-injection-v3-20260721
 
 # 当真实 provider 的 billing origin 或可计费 usage 映射不可验证时，生成 n=0 的 blocked 报告
 PYTHONPATH=. backend/.venv/bin/python eval/write_blocked_real_benchmark.py \
-  --run-id paperrag-real-provider-blocked-20260721
+  --run-id paperrag-real-provider-blocked-v3-20260721
 
 # 完整真实 provider 评测仅在 billing origin、精确价格与计费 usage 维度均已安全验证后运行
 PYTHONPATH=. backend/.venv/bin/python eval/run_agentic_rag_eval.py \
@@ -197,9 +197,9 @@ PYTHONPATH=. backend/.venv/bin/python eval/run_agentic_rag_eval.py \
 
 故障注入覆盖本地空结果/异常、arXiv 与 web 不可用、planner/sufficiency 不可解析、LLM timeout、groundedness 重新检索/重新生成、补检索预算耗尽，以及预期的终态数据库失败。其恢复率定义为 `fallback_recovery_rate = fallback_recovered / fallback_attempted`，其中 `fallback_recovered` 还必须满足上述严格 `task_success`。
 
-2026-07-21 的可复现确定性结果位于 `eval/results/production/paperrag-failure-injection-v1-20260721/`：10/10 场景符合预期，其中成功恢复 7、降级但安全返回 2、预期终态失败 1；fallback recovery 为 7/9（0.7778），严格 task success 为 7/10（0.7）。该 fixture-only 小样本的 P50/P90/P95/mean 为 0.0117/0.0136/0.0150/0.0119 秒，仅用于验证遥测与恢复状态机，不代表真实 provider 延迟或生产 SLO。
+2026-07-21 的可复现确定性结果位于 `eval/results/production/paperrag-failure-injection-v3-20260721/`：10/10 场景符合预期，其中成功恢复 7、降级但安全返回 2、预期终态失败 1；fallback recovery 为 7/9（0.7778），严格 task success 为 7/10（0.7）。该 fixture-only 小样本的 P50/P90/P95/mean 为 0.0104/0.0116/0.0137/0.0105 秒，仅用于验证遥测与恢复状态机，不代表真实 provider 延迟或生产 SLO。该报告绑定包含 runner 与冻结数据集的 commit `320ccb7`，且 manifest 记录 `dirty=false`。
 
-同日真实 provider 运行记录在 `eval/results/production/paperrag-real-provider-blocked-20260721/`：当前配置模型为 `MiniMax-M3`。MiniMax 当前页面公布了按 context 分层的 M3 input/output/cache-read 价格，但本地兼容端点的 billing origin 未验证，且返回 usage 维度无法安全映射到该计费合同；因此版本化目录对 M3 保持 fail-closed，不宣称精确可计费成本。为避免无法执行精确 USD 安全上限，运行在发送请求前被阻断。报告明确记录 `n=0`、外部请求 0，所有真实质量/延迟/成本指标为 unknown；不得将其替换为 fixture 数字。
+同日真实 provider 运行记录在 `eval/results/production/paperrag-real-provider-blocked-v3-20260721/`：当前配置模型为 `MiniMax-M3`。MiniMax 当前页面公布了按 context 分层的 M3 input/output/cache-read 价格，但本地兼容端点的 billing origin 未验证，且返回 usage 维度无法安全映射到该计费合同；因此版本化目录对 M3 保持 fail-closed，不宣称精确可计费成本。为避免无法执行精确 USD 安全上限，运行在发送请求前被阻断。报告绑定同一 clean source commit 与 `questions_501_test_200.jsonl` 的 SHA-256，明确记录 `n=0`、外部请求 0，所有真实质量/延迟/成本指标为 unknown；不得将其替换为 fixture 数字。
 
 ### 历史 Traditional RAG vs Agentic RAG 对照（不用于简历）
 

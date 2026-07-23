@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -15,6 +14,7 @@ from app.db.mysql import get_db
 from app.models.chat_history import ChatHistory
 from app.models.conversation import Conversation
 from app.utils.content_safety import strip_hidden_reasoning
+from app.utils.time import utc_now
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -80,8 +80,8 @@ def create_conversation(
         id=cid,
         title=(payload.title or "新对话")[:255],
         pinned=False,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=utc_now(),
+        updated_at=utc_now(),
     )
     db.add(conv)
     db.commit()
@@ -100,7 +100,7 @@ def update_conversation(
         conv.title = payload.title[:255]
     if payload.pinned is not None:
         conv.pinned = bool(payload.pinned)
-    conv.updated_at = datetime.utcnow()
+    conv.updated_at = utc_now()
     db.commit()
     db.refresh(conv)
     return _to_out(conv)

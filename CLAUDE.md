@@ -17,7 +17,7 @@ Cite Scope 是一个 Agentic RAG 学术论文问答系统。LangGraph 12 节点 
 
 ## 技术栈
 
-- 后端：Python 3.11 / FastAPI / LangGraph / SQLAlchemy / Pydantic
+- 后端：Python 3.12 / FastAPI / LangGraph / SQLAlchemy / Pydantic
 - LLM：MiniMax M2.7（OpenAI 兼容 API）
 - Embedding：SiliconFlow BAAI/bge-m3
 - 向量库：Qdrant（向量 + BM25 混合检索）

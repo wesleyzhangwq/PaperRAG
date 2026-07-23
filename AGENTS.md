@@ -96,13 +96,15 @@ User Query + Chat History
    trigger re-retrieval or re-generation, up to a configurable budget.
 
 3. **Transparent reasoning.** Every agent step emits a `StepTrace` with timing and summaries.
-   The frontend's `ThinkingCard` component renders these in real time so users see *how* the
+   The frontend's `AgentTimeline` component renders these in real time so users see *how* the
    answer was built, not just the answer itself.
 
-4. **Tools as interfaces, not entangled code.** Each of the 7 tools (`retrieve_local`,
-   `retrieve_arxiv`, `search_web`, `query_rewrite`, `evaluate_docs`, `get_paper_detail`,
-   `get_paper_chunks`) is a standalone module under `backend/app/tools/`. The executor
-   dispatches by action name; adding a tool means adding a file and a dispatch case.
+4. **Tools as interfaces, not entangled code.** Each of the 6 executor tools
+   (`retrieve_local`, `retrieve_arxiv`, `search_web`, `query_rewrite`,
+   `get_paper_detail`, `get_paper_chunks`) is a standalone module under
+   `backend/app/tools/`. Evidence sufficiency is a graph stage, not an executor
+   tool. The executor dispatches by action name; adding a tool means adding a
+   file and a dispatch case.
 
 5. **Separation of concerns in graph nodes.** Nodes return partial state updates and only emit
    LangGraph custom events for live UI traces. HTTP and SSE protocol mapping stay in
@@ -133,12 +135,12 @@ backend/app/
 │   │   └── presentation.py    # UI-friendly payload (confidence, labels)
 │   └── prompts/               # System prompts for each LLM-calling node
 │
-├── tools/                     # 7 standalone tools
+├── tools/                     # 6 standalone executor tools + graph-stage helpers
 │   ├── retrieve_local.py      # Qdrant vector + BM25 hybrid search
 │   ├── retrieve_arxiv.py      # arXiv API real-time search
 │   ├── search_web.py          # Tavily web search (graceful fallback)
 │   ├── query_rewrite.py       # LLM sub-question decomposition
-│   ├── evaluate_docs.py       # LLM document sufficiency check
+│   ├── evaluate_docs.py       # LLM evidence sufficiency helper used by the graph stage
 │   ├── paper_detail.py        # MySQL paper metadata lookup
 │   └── paper_chunks.py        # Chunk retrieval by paper_id
 │
@@ -173,13 +175,11 @@ backend/app/
 frontend/src/
 ├── composables/
 │   ├── useSSE.ts              # SSE connection + async generator
-│   ├── useChat.ts             # Send message → handle all SSE events
-│   └── useThinking.ts         # Agent step state machine (pending → running → done)
+│   └── useChat.ts             # Send message → handle all SSE events and timeline upserts
 │
 ├── components/
 │   ├── chat/
-│   │   ├── ThinkingCard.vue   # Collapsible agent reasoning display
-│   │   ├── StepIndicator.vue  # Per-step status (○ pending, ◐ running, ● done ✓/✗)
+│   │   ├── AgentTimeline.vue  # Stable-id stage/tool timeline with live status
 │   │   ├── AssistantBubble.vue # Markdown + CitationPopover + source list
 │   │   ├── UserBubble.vue
 │   │   ├── MessageList.vue

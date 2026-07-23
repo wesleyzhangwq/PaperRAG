@@ -6,7 +6,6 @@ import json
 import time
 import uuid
 from contextlib import suppress
-from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends
@@ -25,6 +24,7 @@ from app.models.conversation import Conversation
 from app.observability.llm_usage import collect_llm_usage
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.utils.content_safety import strip_hidden_reasoning
+from app.utils.time import utc_now
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -59,8 +59,8 @@ def _ensure_conversation(db: Session, conversation_id: str, first_user_msg: str)
             id=conversation_id,
             title=title,
             pinned=False,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=utc_now(),
+            updated_at=utc_now(),
         )
         db.add(conv)
         db.commit()
@@ -85,7 +85,7 @@ def _persist_messages(
         db: Session = SessionLocal()
         try:
             _ensure_conversation(db, conversation_id, user_query)
-            now = datetime.utcnow()
+            now = utc_now()
             db.add(ChatHistory(
                 conversation_id=conversation_id,
                 session_id=conversation_id,

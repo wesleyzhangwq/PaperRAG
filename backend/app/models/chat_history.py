@@ -8,6 +8,7 @@ from sqlalchemy import DateTime, Enum, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.mysql import Base
+from app.utils.time import utc_now
 
 
 class ChatHistory(Base):
@@ -23,4 +24,4 @@ class ChatHistory(Base):
     # JSON-serialized sources/traces for full reload
     sources_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     thinking_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)

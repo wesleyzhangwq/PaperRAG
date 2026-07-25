@@ -46,3 +46,17 @@ def test_evaluate_docs_insufficient():
         result = evaluate_docs("explain multi-head attention", ["basic attention info"])
     assert result["sufficient"] is False
     assert len(result["missing_aspects"]) > 0
+
+
+def test_evaluate_docs_keeps_evidence_beyond_short_headers():
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = MagicMock(
+        content='{"sufficient": true, "reason": "late evidence is visible", "missing_aspects": []}'
+    )
+    late_evidence = "x" * 300 + "SCALED_DOT_PRODUCT_ATTENTION"
+
+    with patch("app.tools.evaluate_docs._get_llm", return_value=mock_llm):
+        evaluate_docs("what is the core mechanism", [late_evidence])
+
+    prompt = mock_llm.invoke.call_args.args[0]
+    assert "SCALED_DOT_PRODUCT_ATTENTION" in prompt

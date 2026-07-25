@@ -177,8 +177,10 @@ def _build_source_cards(
 
     cards: list[dict] = []
     seen: set[str] = set()
-    iter_list = sources_raw or [{"paper_id": pid} for pid in chunks_by_paper.keys()]
-    for s in iter_list:
+    # Source cards are proof for citations that survived citation_gate.  Do not
+    # silently promote every retrieved candidate when the final answer contains
+    # no verified citations; that makes the UI contradict the API's `sources`.
+    for s in sources_raw:
         pid = s.get("paper_id") or ""
         if not pid or pid in seen:
             continue
@@ -249,7 +251,10 @@ def _build_retrieval_summary(
             + (f"，主题集中在 {'、'.join(main_topics)}" if main_topics else "")
             + "。"
         )
-        narrative += f"其中 {cited_papers} 篇被最终回答引用并展示为参考论文。"
+        if cited_papers:
+            narrative += f"其中 {cited_papers} 篇被最终回答引用并展示为参考论文。"
+        else:
+            narrative += "最终回答未包含可核实的论文引用。"
         if len(unique_papers) > cited_papers:
             narrative += "未展示的论文是候选检索上下文，未被最终答案直接引用。"
         if top_title:

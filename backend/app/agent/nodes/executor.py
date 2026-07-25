@@ -16,8 +16,8 @@ from app.services.retriever import retrieve
 from app.tools.query_rewrite import rewrite_query
 from app.tools.retrieve_arxiv import retrieve_arxiv_tool
 from app.tools.search_web import search_web_tool
-from app.tools.paper_detail import get_paper_detail
-from app.tools.paper_chunks import get_paper_chunks
+from app.tools.paper_detail import format_paper_detail, load_paper
+from app.tools.paper_chunks import format_paper_chunks, load_paper_chunks
 from app.utils.citations import extract_arxiv_ids
 
 
@@ -372,14 +372,61 @@ def executor_node(state: AgentState, *, db: Session) -> dict:
                 plan_step["params"] = next_params
 
     elif action == "get_paper_detail":
-        result = get_paper_detail(db, params.get("paper_id", ""))
-        output_summary = "paper detail retrieved"
-        output_detail = {"preview": (str(result) or "")[:300]}
+        paper_id = str(params.get("paper_id") or "").strip()
+        paper = load_paper(db, paper_id)
+        result = format_paper_detail(paper, paper_id)
+        added_count = 0
+        if paper is not None:
+            detail_doc = Document(
+                page_content=result,
+                metadata={
+                    "paper_id": paper.paper_id,
+                    "title": paper.title,
+                    "source": "paper_detail",
+                    "direct_lookup": True,
+                },
+            )
+            new_context, added_count = _append_unique_documents(new_context, [detail_doc])
+            retrieved_paper_ids = _append_unique_paper_ids(retrieved_paper_ids, [detail_doc])
+        output_summary = (
+            "paper detail retrieved"
+            if paper is not None
+            else "paper detail not found"
+        )
+        output_detail = {
+            "paper_id": paper_id,
+            "added": added_count,
+            "preview": (str(result) or "")[:300],
+        }
 
     elif action == "get_paper_chunks":
-        result = get_paper_chunks(db, params.get("paper_id", ""), params.get("max_chunks", 10))
-        output_summary = "chunks retrieved"
-        output_detail = {"preview": (str(result) or "")[:300]}
+        paper_id = str(params.get("paper_id") or "").strip()
+        max_chunks = int(params.get("max_chunks") or 10)
+        chunks = load_paper_chunks(db, paper_id, max_chunks)
+        result = format_paper_chunks(chunks, paper_id)
+        chunk_docs = [
+            Document(
+                page_content=chunk.chunk_text,
+                metadata={
+                    "chunk_id": chunk.chunk_id,
+                    "paper_id": chunk.paper_id,
+                    "page_num": chunk.page_num,
+                    "chunk_index": chunk.chunk_index,
+                    "source": "paper_chunks",
+                    "direct_lookup": True,
+                },
+            )
+            for chunk in chunks
+        ]
+        new_context, added_count = _append_unique_documents(new_context, chunk_docs)
+        retrieved_paper_ids = _append_unique_paper_ids(retrieved_paper_ids, chunk_docs)
+        output_summary = f"retrieved {len(chunks)} paper chunks"
+        output_detail = {
+            "paper_id": paper_id,
+            "total": len(chunks),
+            "added": added_count,
+            "preview": (str(result) or "")[:300],
+        }
 
     else:
         output_summary = f"unknown action: {action}"

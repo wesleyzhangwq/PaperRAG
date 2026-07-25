@@ -2,11 +2,12 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
-  presentationStepsToThinking,
-  resolveStepDetails,
-} from '../src/utils/thinking.ts'
+  applyPlanEvent,
+  applyStageEvent,
+  presentationToTimeline,
+} from '../src/utils/timeline.ts'
 
-test('presentation step debug details take precedence over stale live tool indexes', () => {
+test('presentation replay preserves stage and retrieval debug details', () => {
   const presentation = {
     answer: '',
     confidence: 'low',
@@ -76,32 +77,61 @@ test('presentation step debug details take precedence over stale live tool index
       },
     ],
   }
-  const staleCall = {
-    index: 0,
-    action: 'retrieve_local',
-    params: { query: '', top_k: 8 },
-    reason: 'fallback',
-  }
-  const staleResult = {
-    index: 0,
-    action: 'retrieve_local',
-    duration_ms: 529,
-    summary: 'found 8 chunks (fallback)',
-    detail: {
-      hits: [{ paper_id: 'wrong-step' }],
-      total: 8,
-    },
-  }
+  const timeline = presentationToTimeline(presentation)
 
-  const steps = presentationStepsToThinking(presentation)
-  const intentDetails = resolveStepDetails(steps[0], staleCall, staleResult)
-  const retrieveDetails = resolveStepDetails(steps[2], undefined, undefined)
-
-  assert.deepEqual(intentDetails.params, undefined)
-  assert.deepEqual(intentDetails.result, { raw_summary: 'type=simple' })
-  assert.equal(retrieveDetails.params?.query, 'Deep Learning Foundations 里哪些论文奠定了现代大模型基础？')
-  assert.equal(retrieveDetails.result?.total, 8)
-  assert.deepEqual(retrieveDetails.result?.hits, [
+  assert.equal(timeline[0].kind, 'stage')
+  assert.deepEqual(timeline[0].detail, { raw_summary: 'type=simple' })
+  assert.equal(timeline[2].kind, 'step')
+  assert.equal(timeline[2].status, 'warning')
+  assert.equal(timeline[2].durationMs, 529)
+  assert.equal(timeline[2].detail?.query_used, 'Deep Learning Foundations 里哪些论文奠定了现代大模型基础？')
+  assert.equal(timeline[2].detail?.total, 8)
+  assert.deepEqual(timeline[2].detail?.hits, [
     { paper_id: '2402.05424', title: 'Neural Circuit Diagrams' },
   ])
+})
+
+test('stable stage ids update plan items without duplicating or downgrading them', () => {
+  const planned = applyPlanEvent([], {
+    revision: 1,
+    steps: [
+      {
+        id: 'step:0',
+        action: 'retrieve_local',
+        title: '检索本地论文',
+        reason: '优先使用本地证据',
+      },
+    ],
+  })
+  const running = applyStageEvent(planned, {
+    id: 'step:0',
+    stage: 'retrieve_step',
+    status: 'start',
+    title: '检索本地论文',
+  })
+  const republished = applyPlanEvent(running, {
+    revision: 2,
+    steps: [
+      {
+        id: 'step:0',
+        action: 'retrieve_local',
+        title: '检索本地论文（已路由）',
+        reason: '保持本地优先',
+      },
+    ],
+  })
+  const done = applyStageEvent(republished, {
+    id: 'step:0',
+    stage: 'retrieve_step',
+    status: 'done',
+    title: '检索本地论文（已路由）',
+    summary: '找到 8 个片段',
+    duration_ms: 529,
+  })
+
+  assert.equal(done.length, 1)
+  assert.equal(done[0].status, 'done')
+  assert.equal(done[0].title, '检索本地论文（已路由）')
+  assert.equal(done[0].summary, '找到 8 个片段')
+  assert.equal(done[0].durationMs, 529)
 })

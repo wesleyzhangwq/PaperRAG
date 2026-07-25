@@ -1,4 +1,5 @@
 """Test executor node."""
+from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 from langchain_core.documents import Document
 from langchain_core.messages import HumanMessage
@@ -196,3 +197,68 @@ def test_executor_intentional_external_disable_is_not_a_fallback_failure():
 
     assert result["step_traces"][0]["detail"]["status"] == "intentional_disabled"
     assert "fallback_telemetry" not in result
+
+
+def test_executor_adds_direct_paper_detail_to_evidence_context():
+    state = _base_state(
+        plan=[
+            StepSpec(
+                action="get_paper_detail",
+                params={"paper_id": "1706.03762"},
+                reason="explicit paper id",
+            )
+        ],
+        plan_step_index=0,
+    )
+    paper = SimpleNamespace(
+        paper_id="1706.03762",
+        title="Attention Is All You Need",
+        authors=["A. Author"],
+        year=2017,
+        categories=["cs.CL"],
+        abstract="Transformer metadata",
+    )
+
+    with patch("app.agent.nodes.executor.load_paper", return_value=paper):
+        result = executor_node(state, db=MagicMock())
+
+    assert result["retrieved_paper_ids"] == ["1706.03762"]
+    assert len(result["retrieval_context"]) == 1
+    doc = result["retrieval_context"][0]
+    assert doc.metadata["source"] == "paper_detail"
+    assert doc.metadata["direct_lookup"] is True
+    assert "Attention Is All You Need" in doc.page_content
+
+
+def test_executor_adds_direct_paper_chunks_to_evidence_context():
+    state = _base_state(
+        plan=[
+            StepSpec(
+                action="get_paper_chunks",
+                params={"paper_id": "1706.03762", "max_chunks": 2},
+                reason="explicit paper id",
+            )
+        ],
+        plan_step_index=0,
+    )
+    chunks = [
+        SimpleNamespace(
+            chunk_id=f"1706.03762-{index}",
+            paper_id="1706.03762",
+            page_num=1,
+            chunk_index=index,
+            chunk_text=text,
+        )
+        for index, text in enumerate(["attention only", "transformer architecture"])
+    ]
+
+    with patch("app.agent.nodes.executor.load_paper_chunks", return_value=chunks):
+        result = executor_node(state, db=MagicMock())
+
+    assert result["retrieved_paper_ids"] == ["1706.03762"]
+    assert [doc.page_content for doc in result["retrieval_context"]] == [
+        "attention only",
+        "transformer architecture",
+    ]
+    assert all(doc.metadata["direct_lookup"] for doc in result["retrieval_context"])
+    assert result["step_traces"][0]["detail"]["total"] == 2

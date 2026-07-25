@@ -1,6 +1,8 @@
 """FastAPI app entrypoint."""
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -19,10 +21,19 @@ from app.routers import upload as upload_router
 settings = get_settings()
 configure_logging(json_logs=settings.observability_json_logs)
 
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """Initialize database tables before serving requests."""
+    init_db()
+    yield
+
+
 app = FastAPI(
     title="Cite Scope",
     version="0.1.0",
     description="Agentic research assistant for cited arXiv paper Q&A with MySQL, Qdrant, and cloud LLM/Embedding APIs.",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -53,11 +64,6 @@ app.include_router(feedback_router.router)
 app.include_router(papers_router.router)
 app.include_router(ingest_router.router)
 app.include_router(upload_router.router)
-
-
-@app.on_event("startup")
-def _startup() -> None:
-    init_db()
 
 
 @app.get("/health", tags=["meta"])

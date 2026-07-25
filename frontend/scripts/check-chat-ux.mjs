@@ -18,7 +18,7 @@ const messageList = read('src/components/chat/MessageList.vue')
 const answerCard = read('src/components/answer/AnswerCard.vue')
 const chatLayout = read('src/layouts/ChatLayout.vue')
 const debugPanel = read('src/components/answer/DebugPanel.vue')
-const thinkingCard = read('src/components/chat/ThinkingCard.vue')
+const agentTimeline = read('src/components/chat/AgentTimeline.vue')
 const useChat = read('src/composables/useChat.ts')
 const conversationsStore = read('src/stores/conversations.ts')
 const duration = read('src/utils/duration.ts')
@@ -62,7 +62,9 @@ assert(
 )
 
 assert(
-  conversationsStore.includes('deriveElapsedMs') && conversationsStore.includes('duration_ms'),
+  conversationsStore.includes('deriveElapsedMs')
+    && conversationsStore.includes('r.elapsed_ms')
+    && conversationsStore.includes('item.durationMs'),
   'persisted answers must recover elapsedMs from saved step durations so Worked for survives reloads',
 )
 
@@ -79,14 +81,17 @@ assert(
 )
 
 assert(
-  thinkingCard.includes('watch(') && thinkingCard.includes('expanded.value = false'),
-  'thinking card must automatically collapse after the run completes',
+  agentTimeline.includes('watch(')
+    && agentTimeline.includes('expanded.value = false')
+    && agentTimeline.includes('currentActivity'),
+  'agent timeline must track live activity and automatically collapse once answer streaming starts',
 )
 
 assert(
-  useChat.includes('flushTokenBuffer')
-    && useChat.includes("tokenBuffer = ''")
-    && !useChat.includes("reasoning: (cur.reasoning || '') + event.data.t"),
+  useChat.includes('flushTokens')
+    && useChat.includes("tokenPending = ''")
+    && useChat.includes('requestAnimationFrame(flushTokens)')
+    && !useChat.includes('event.data.reasoning'),
   'chat streaming must buffer answer tokens smoothly and must not expose model reasoning text',
 )
 

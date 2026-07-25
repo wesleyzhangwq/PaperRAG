@@ -8,6 +8,7 @@ from sqlalchemy import DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.mysql import Base
+from app.utils.time import utc_now
 
 
 class AnswerFeedback(Base):
@@ -19,4 +20,4 @@ class AnswerFeedback(Base):
     vote: Mapped[str] = mapped_column(String(8), nullable=False)
     reason: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)

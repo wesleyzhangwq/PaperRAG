@@ -12,6 +12,9 @@ from app.core.config import get_settings
 from app.observability.llm_usage import invoke_with_usage
 from app.utils.llm_json import extract_json, strip_think
 
+CONTEXT_ITEM_CHAR_LIMIT = 800
+CONTEXT_TOTAL_CHAR_LIMIT = 8000
+
 _EVAL_PROMPT = """你是一个学术检索质量评估器。判断当前检索到的资料是否足以回答用户问题。
 
 用户问题：{query}
@@ -54,7 +57,12 @@ def evaluate_docs(query: str, context_texts: list[str]) -> dict:
             "raw": "",
         }
 
-    context_summary = "\n".join(f"- {t[:200]}" for t in context_texts[:10])
+    # Two hundred characters often contain only a title/header and can hide the
+    # actual mechanism that appears later in a paper chunk.  Keep a bounded but
+    # useful excerpt per item, then enforce a global prompt-size ceiling.
+    context_summary = "\n".join(
+        f"- {text[:CONTEXT_ITEM_CHAR_LIMIT]}" for text in context_texts[:10]
+    )[:CONTEXT_TOTAL_CHAR_LIMIT]
     llm = _get_llm()
     prompt = _EVAL_PROMPT.format(query=query, context_summary=context_summary)
 

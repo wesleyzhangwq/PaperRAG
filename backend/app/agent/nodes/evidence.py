@@ -40,21 +40,35 @@ def evidence_node(state: AgentState) -> dict:
         docs = list(state.get("retrieval_context") or [])
         before = len(docs)
 
-        # 1) rerank: scored first (desc), unscored keep insertion order after
+        # 1) rerank: an explicit paper-id lookup is authoritative for the user's
+        # requested paper, so keep it ahead of fuzzy vector-search candidates.
+        # Other scored documents remain ordered descending; ordinary unscored
+        # documents keep insertion order at the end.
         scored = [(d, _score(d)) for d in docs]
-        ranked = sorted(
-            (pair for pair in scored if pair[1] is not None),
+        direct = [
+            pair for pair in scored
+            if bool((pair[0].metadata or {}).get("direct_lookup"))
+        ]
+        non_direct = [
+            pair for pair in scored
+            if not bool((pair[0].metadata or {}).get("direct_lookup"))
+        ]
+        ranked = direct + sorted(
+            (pair for pair in non_direct if pair[1] is not None),
             key=lambda pair: pair[1],
             reverse=True,
-        ) + [pair for pair in scored if pair[1] is None]
+        ) + [pair for pair in non_direct if pair[1] is None]
 
         # 2) per-paper cap
         per_paper: dict[str, int] = defaultdict(int)
         capped: list[Document] = []
         dropped_cap = 0
         for doc, _ in ranked:
-            pid = (doc.metadata or {}).get("paper_id") or ""
-            if pid:
+            metadata = doc.metadata or {}
+            pid = metadata.get("paper_id") or ""
+            # Paper metadata is not a chunk and should not consume one of the
+            # per-paper content slots.
+            if pid and metadata.get("source") != "paper_detail":
                 if per_paper[pid] >= MAX_CHUNKS_PER_PAPER:
                     dropped_cap += 1
                     continue

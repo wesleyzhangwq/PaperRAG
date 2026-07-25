@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -25,6 +24,7 @@ from app.services.arxiv_import import (
     normalize_arxiv_id,
 )
 from app.services.ingest import _ingest_one
+from app.utils.time import utc_now
 
 router = APIRouter(prefix="/upload", tags=["upload"])
 
@@ -77,7 +77,7 @@ def _new_upload_job(
     num_chunks: int,
     message: str,
 ) -> UploadJob:
-    now = datetime.utcnow()
+    now = utc_now()
     return UploadJob(
         job_id=job_id,
         paper_id=paper_id,
@@ -99,7 +99,7 @@ def _run_arxiv_import_job(job_id: str, arxiv_id: str) -> None:
             return
         job.status = "running"
         job.message = "fetching_metadata"
-        job.updated_at = datetime.utcnow()
+        job.updated_at = utc_now()
         db.commit()
 
         record = fetch_arxiv_record(arxiv_id)
@@ -108,13 +108,13 @@ def _run_arxiv_import_job(job_id: str, arxiv_id: str) -> None:
         job.filename = f"{record['paper_id']}.pdf"
         job.title = record.get("title") or record["paper_id"]
         job.message = "downloading_pdf"
-        job.updated_at = datetime.utcnow()
+        job.updated_at = utc_now()
         db.commit()
 
         record = download_arxiv_pdf(record)
         job = db.query(UploadJob).filter(UploadJob.job_id == job_id).one()
         job.message = "ingesting"
-        job.updated_at = datetime.utcnow()
+        job.updated_at = utc_now()
         db.commit()
 
         pid, ingest_status = _ingest_one(db, record, force=False)
@@ -130,7 +130,7 @@ def _run_arxiv_import_job(job_id: str, arxiv_id: str) -> None:
             job.status = "failed"
             job.message = paper.ingest_error if paper is not None else "failed"
         job.num_chunks = paper.num_chunks if paper is not None else 0
-        job.updated_at = datetime.utcnow()
+        job.updated_at = utc_now()
         db.commit()
     except Exception as exc:
         db.rollback()
@@ -138,7 +138,7 @@ def _run_arxiv_import_job(job_id: str, arxiv_id: str) -> None:
         if job is not None:
             job.status = "failed"
             job.message = f"{type(exc).__name__}: {exc}"
-            job.updated_at = datetime.utcnow()
+            job.updated_at = utc_now()
             db.commit()
     finally:
         db.close()

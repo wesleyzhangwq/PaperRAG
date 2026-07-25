@@ -168,6 +168,42 @@ def test_evidence_unscored_docs_keep_order_after_scored():
     assert result["retrieval_context"][1].page_content == "web result"
 
 
+def test_evidence_prioritizes_explicit_paper_lookup_over_fuzzy_scores():
+    direct_detail = Document(
+        page_content="exact metadata",
+        metadata={
+            "paper_id": "target",
+            "source": "paper_detail",
+            "direct_lookup": True,
+        },
+    )
+    direct_chunks = [
+        Document(
+            page_content=f"exact chunk {index}",
+            metadata={
+                "paper_id": "target",
+                "source": "paper_chunks",
+                "direct_lookup": True,
+            },
+        )
+        for index in range(MAX_CHUNKS_PER_PAPER + 1)
+    ]
+    fuzzy = _doc("other", "fuzzy vector match", 0.99)
+    state = _base_state(
+        retrieval_context=[fuzzy, direct_detail, *direct_chunks]
+    )
+
+    result = evidence_node(state)
+    kept = result["retrieval_context"]
+
+    assert kept[0].metadata["source"] == "paper_detail"
+    assert [doc.page_content for doc in kept[1:1 + MAX_CHUNKS_PER_PAPER]] == [
+        f"exact chunk {index}" for index in range(MAX_CHUNKS_PER_PAPER)
+    ]
+    assert kept[-1].page_content == "fuzzy vector match"
+    assert result["evidence_stats"]["dropped_cap"] == 1
+
+
 # ----------------------------------------------------------------- sufficiency
 
 def test_sufficiency_sufficient_routes_to_synthesis():

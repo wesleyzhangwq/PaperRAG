@@ -30,6 +30,37 @@ def test_retrieval_summary_distinguishes_retrieved_from_cited_papers():
     assert "最终回答引用" in summary["narrative"]
 
 
+def test_retrieved_candidates_are_not_promoted_when_answer_has_no_citations():
+    db = MagicMock()
+    db.query.return_value.filter.return_value.one_or_none.return_value = None
+    state = {
+        "final_answer": "模型服务暂时不可用，当前无法基于论文证据完成回答。",
+        "sources": [],
+        "retrieval_context": [
+            Document(
+                page_content="retrieved evidence",
+                metadata={"paper_id": "1706.03762", "title": "Attention Is All You Need"},
+            ),
+        ],
+        "step_traces": [],
+        "sufficiency_result": {
+            "sufficient": False,
+            "parse_failed": True,
+        },
+        "reflection_result": {"passed": False},
+        "degraded": True,
+        "synthesis_failed": True,
+    }
+
+    result = presentation_node(state, db=db)["presentation"]
+
+    assert result["sources"] == []
+    assert result["retrieval_summary"]["total_papers"] == 1
+    assert result["retrieval_summary"]["cited_papers"] == 0
+    assert "未包含可核实的论文引用" in result["retrieval_summary"]["narrative"]
+    assert result["confidence"] == "low"
+
+
 def test_steps_use_per_trace_detail_not_latest_evaluator_state():
     db = MagicMock()
     db.query.return_value.filter.return_value.one_or_none.return_value = None

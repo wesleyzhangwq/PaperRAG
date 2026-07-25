@@ -27,10 +27,10 @@ Cite Scope 是一个面向学术论文问答的 **Agentic RAG** 系统。它通�
 
 ## Highlights
 
-- **Agentic workflow**: 8 个 LangGraph 节点，覆盖 `intent -> planner -> executor -> synthesis -> reflection -> re_planner -> final_answer -> presentation`。
+- **Agentic workflow**: 12 个 LangGraph 节点，覆盖 `guard -> intent -> planner -> route -> executor -> evidence -> sufficiency -> synthesis -> groundedness -> citation_gate -> presentation`，并通过 `re_planner` 做有界补充检索。
 - **Adaptive retrieval plan**: Planner 根据问题复杂度生成不同检索计划，而不是固定跑一条 RAG pipeline。
 - **Hybrid retrieval**: Qdrant dense vector search 与 BM25 sparse ranking 融合，支持 oversampling、alpha 权重和检索缓存。
-- **Self-verification**: `evaluate_docs` 与 `reflection` 分别检查资料充分性和回答质量，失败后触发补充检索或重新生成。
+- **Self-verification**: `sufficiency` 阶段调用 `evaluate_docs` 检查证据充分性，`groundedness` 检查引用、完整性与逻辑；失败后按预算触发补充检索或重新生成。
 - **Transparent execution**: 前端通过 SSE 展示每一步耗时、参数、结果摘要、检索片段和调试详情。
 - **Corpus overview**: 新对话和论文库页面可以展示当前 RAG 语料库的主题分布、代表论文和建议问题。
 - **Cited answers**: 回答保留论文来源卡片和 citation popover，便于回到 arXiv / PDF 证据。
@@ -57,10 +57,18 @@ Cite Scope 是一个面向学术论文问答的 **Agentic RAG** 系统。它通�
 User query + chat history
         |
         v
-  intent analysis
+  guard
+  - empty/oversize/injection checks
         |
         v
-  retrieval planning
+  intent
+        |
+        v
+  planner
+        |
+        v
+  route
+  - local-first source policy
         |
         v
   executor loop
@@ -68,21 +76,31 @@ User query + chat history
   - retrieve_arxiv
   - search_web
   - query_rewrite
-  - evaluate_docs
   - get_paper_detail
   - get_paper_chunks
         |
         v
-  synthesis with streaming
+  evidence
+  - dedupe/rerank/context budget
         |
         v
-  self reflection
-    | pass
+  sufficiency
+    | insufficient + budget
+    +-----------------------> re_planner -> executor
+    |
     v
-  final_answer -> presentation -> SSE/UI
-
-    fail + re_retrieve -> re_planner -> executor
-    fail + re_generate -> synthesis
+  synthesis (streaming)
+        |
+        v
+  groundedness
+    | re-retrieve ---------> re_planner -> executor
+    | re-generate ---------> synthesis
+    v
+  citation_gate
+  - resolve and strip unverifiable citations
+        |
+        v
+  presentation -> SSE/UI
 ```
 
 ### Backend
@@ -173,6 +191,8 @@ Health check:
 curl http://localhost:8000/health
 ```
 
+`/health` 是进程存活检查，不会调用外部 LLM/Embedding 服务，因此不能证明 API Key 有效。完整就绪验证还应发起一次实际问答，并确认响应中的 `degraded` 为 `false`；若为 `true`，先检查对应供应商凭据与额度。
+
 ### 3. Build a paper corpus
 
 Small recent arXiv corpus:
@@ -212,8 +232,10 @@ http://localhost:5173
 ```bash
 cp .env.example .env
 # fill API keys first
-docker compose up -d
+docker compose up -d --build
 ```
+
+修改 `.env` 后 Compose 会重建受影响的容器；修改后端或前端源码后必须保留 `--build`，否则可能继续运行旧镜像。若只需更新后端，可执行 `docker compose up -d --build backend`。
 
 Frontend:
 
@@ -284,7 +306,7 @@ Frontend:
 
 ```bash
 cd frontend
-node --test --experimental-strip-types tests/thinking.test.mjs
+npm test
 npm run build
 ```
 
@@ -335,7 +357,7 @@ Cite Scope is designed as a portfolio-grade, explainable research assistant. Ins
 
 ### Key capabilities
 
-- LangGraph-based agent workflow with intent analysis, planning, execution, synthesis, reflection and presentation.
+- A 12-node LangGraph workflow with guardrails, routing, evidence processing, sufficiency checks, groundedness verification, citation gating and presentation.
 - Hybrid dense + BM25 retrieval with tunable ranking parameters.
 - Optional Tavily web search for evidence supplementation.
 - SSE streaming for live answer tokens and execution-step updates.

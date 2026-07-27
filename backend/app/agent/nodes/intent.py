@@ -14,6 +14,9 @@ from app.observability.llm_usage import invoke_with_usage
 from app.utils.llm_json import extract_json
 
 _TYPE_LABELS = {"simple": "事实型", "complex": "综合型", "comparison": "对比型"}
+_INTENT_TYPES = frozenset(_TYPE_LABELS)
+_COMPLEXITIES = frozenset({"low", "medium", "high"})
+_FAIL_CLOSED_INTENT = {"type": "complex", "entities": [], "complexity": "high"}
 
 
 def _get_llm() -> ChatOpenAI:
@@ -28,15 +31,27 @@ def _get_llm() -> ChatOpenAI:
     )
 
 
+def _valid_intent(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    entities = value.get("entities")
+    return (
+        value.get("type") in _INTENT_TYPES
+        and value.get("complexity") in _COMPLEXITIES
+        and isinstance(entities, list)
+        and all(isinstance(entity, str) for entity in entities)
+    )
+
+
 def intent_node(state: AgentState, *, query: str) -> dict:
     """Analyze user intent: type, entities, complexity."""
     t0 = time.perf_counter()
     with stage("intent") as s:
-        llm = _get_llm()
         prompt = INTENT_PROMPT.format(query=query)
-        settings = get_settings()
         telemetry = None
         try:
+            llm = _get_llm()
+            settings = get_settings()
             response = invoke_with_usage(
                 llm,
                 prompt,
@@ -46,7 +61,9 @@ def intent_node(state: AgentState, *, query: str) -> dict:
             )
             intent = extract_json(response.content)
         except Exception as exc:
-            intent = {"type": "simple", "entities": [], "complexity": "low"}
+            # Fail closed for complexity routing: an unavailable classifier
+            # must never be mistaken for a high-confidence fast-path signal.
+            intent = dict(_FAIL_CLOSED_INTENT)
             telemetry = record_fallback(
                 state,
                 failure_class=classify_failure(exc, default="intent_llm_failure"),
@@ -54,8 +71,8 @@ def intent_node(state: AgentState, *, query: str) -> dict:
                 outcome="default_intent",
             )
         else:
-            if not isinstance(intent, dict):
-                intent = {"type": "simple", "entities": [], "complexity": "low"}
+            if not _valid_intent(intent):
+                intent = dict(_FAIL_CLOSED_INTENT)
                 telemetry = record_fallback(
                     state,
                     failure_class="intent_output_unparseable",
@@ -79,7 +96,11 @@ def intent_node(state: AgentState, *, query: str) -> dict:
         output_summary=f"type={intent.get('type')}, complexity={intent.get('complexity')}",
         duration_ms=duration,
     )
-    out = {"intent": intent, "step_traces": state["step_traces"] + [trace]}
+    out = {
+        "intent": intent,
+        "intent_status": "fallback" if telemetry else "ok",
+        "step_traces": state["step_traces"] + [trace],
+    }
     if telemetry:
         out["fallback_telemetry"] = telemetry
     return out

@@ -11,6 +11,7 @@ import time
 
 from langchain_openai import ChatOpenAI
 
+from app.agent.nodes.complexity_router import mark_fast_path_escalated
 from app.agent.prompts.planner import PLANNER_PROMPT, RE_PLANNER_PROMPT
 from app.agent.stages import emit_plan, stage
 from app.agent.state import AgentState, StepSpec, StepTrace
@@ -216,7 +217,7 @@ def planner_node(state: AgentState, *, query: str) -> dict:
                 params={"query": query, "top_k": settings.retrieval_k},
                 reason="本地检索模式：使用语料库检索",
             )]
-        emit_plan(plan, revision=0)
+        emit_plan(plan, revision=1 if state.get("fast_path_escalated") else 0)
         detail = {"steps": [p["action"] for p in plan], "fallback_plan": bool(telemetry)}
         if telemetry:
             s.warning(f"{len(plan)} 个检索步骤（安全回退计划）", detail=detail)
@@ -313,6 +314,17 @@ def re_planner_node(state: AgentState, *, query: str, issues: list[str], missing
         "plan_step_index": len(state["plan"]),
         "step_traces": state["step_traces"] + [trace],
     }
+    if state.get("execution_path") == "fast_local":
+        out.update(
+            {
+                "execution_path": "fast_escalated",
+                "fast_path_escalated": True,
+                "complexity_decision": mark_fast_path_escalated(
+                    state.get("complexity_decision"),
+                    reason_code="groundedness_retrieval_escalation",
+                ),
+            }
+        )
     if telemetry:
         out["fallback_telemetry"] = telemetry
     return out

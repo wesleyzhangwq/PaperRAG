@@ -93,6 +93,14 @@ def _step_user_message(action: str, detail: dict, summary: str) -> tuple[str, st
     if action == "intent_analysis":
         return "已理解你问题的意图与重点。", "completed"
 
+    if action == "complexity_route":
+        final_path = str(detail.get("final_path") or "")
+        if final_path == "fast_local":
+            return "问题适合单次本地检索快路径。", "completed"
+        if final_path == "fast_escalated":
+            return "快路径证据不足，已升级为完整 Agentic 规划。", "warning"
+        return "问题需要完整 Agentic 检索规划。", "completed"
+
     if action == "planning":
         return "已制定检索与生成计划。", "completed"
 
@@ -422,5 +430,11 @@ def presentation_node(state: AgentState, *, db: Session) -> dict:
         "removed_citations": list(state.get("removed_citations") or []),
         "fallback_telemetry": telemetry,
         "response_mode": response_mode,
+        "execution_path": state.get("execution_path"),
+        "complexity_decision": (
+            dict(state["complexity_decision"])
+            if state.get("complexity_decision")
+            else None
+        ),
     }
     return {"presentation": presentation, "fallback_telemetry": telemetry}

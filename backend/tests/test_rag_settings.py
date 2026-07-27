@@ -10,3 +10,4 @@ def test_rag_defaults_match_frozen_eval_winner() -> None:
     assert fields["hybrid_alpha"].default == 0.5
     assert fields["hybrid_max_fetch"].default == 96
     assert fields["agent_external_retrieval_enabled"].default is True
+    assert fields["agent_routing_mode"].default == "full_agentic"

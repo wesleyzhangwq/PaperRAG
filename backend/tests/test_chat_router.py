@@ -29,6 +29,15 @@ def test_chat_sync_returns_200():
         answer="Test answer [arxiv:1706.03762]",
         sources=[Source(paper_id="1706.03762", title="Test", authors=[], year=2017, arxiv_url="https://arxiv.org/abs/1706.03762")],
         used_chunks=3,
+        execution_path="fast_local",
+        complexity_decision={
+            "policy_version": "complexity-router-v1",
+            "initial_path": "fast_local",
+            "final_path": "fast_local",
+            "reason_codes": ["intent_simple"],
+            "vetoes": [],
+            "features": {"query_chars": 17},
+        },
     )
     with patch("app.routers.chat.run_agent_sync", return_value=mock_response):
         resp = client.post("/chat", json={"query": "what is attention", "session_id": "test"})
@@ -37,6 +46,8 @@ def test_chat_sync_returns_200():
     data = resp.json()
     assert "answer" in data
     assert data["answer"] == "Test answer [arxiv:1706.03762]"
+    assert data["execution_path"] == "fast_local"
+    assert data["complexity_decision"]["policy_version"] == "complexity-router-v1"
 
 
 def test_chat_stream_uses_astream_events_and_thread_id():
@@ -55,7 +66,17 @@ def test_chat_stream_uses_astream_events_and_thread_id():
             yield {
                 "event": "on_chain_stream",
                 "name": "LangGraph",
-                "data": {"chunk": {"synthesis": {"final_answer": "hello"}}},
+                "data": {
+                    "chunk": {
+                        "synthesis": {"final_answer": "hello"},
+                        "complexity_router": {
+                            "execution_path": "fast_local",
+                            "complexity_decision": {
+                                "policy_version": "complexity-router-v1"
+                            },
+                        },
+                    }
+                },
             }
 
     @asynccontextmanager
@@ -78,6 +99,17 @@ def test_chat_stream_uses_astream_events_and_thread_id():
     assert "event: token" in resp.text
     assert "event: stage" in resp.text
     assert "event: done" in resp.text
+    done_block = next(
+        block for block in resp.text.split("\n\n") if block.startswith("event: done")
+    )
+    done_payload = json.loads(
+        next(
+            line[6:]
+            for line in done_block.splitlines()
+            if line.startswith("data: ")
+        )
+    )
+    assert done_payload["execution_path"] == "fast_local"
     assert seen_config["configurable"]["thread_id"] == "conv-stream"
 
 

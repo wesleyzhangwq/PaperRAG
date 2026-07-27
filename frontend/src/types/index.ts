@@ -93,6 +93,20 @@ export interface PresentationStep {
   }
 }
 
+export type AgentExecutionPath = 'fast_local' | 'full_agentic' | 'fast_escalated'
+
+export interface ComplexityDecision {
+  policy_version: string
+  mode: string
+  initial_path: AgentExecutionPath
+  final_path: AgentExecutionPath
+  confidence: string
+  reason_codes: string[]
+  vetoes: string[]
+  features: Record<string, string | number | boolean>
+  escalated: boolean
+}
+
 export interface Presentation {
   answer: string
   confidence: Confidence
@@ -100,6 +114,8 @@ export interface Presentation {
   sources: SourceCard[]
   retrieval_summary: RetrievalSummary
   steps: PresentationStep[]
+  execution_path?: AgentExecutionPath | null
+  complexity_decision?: ComplexityDecision | null
 }
 
 // ---------------------------------------------------------------------------

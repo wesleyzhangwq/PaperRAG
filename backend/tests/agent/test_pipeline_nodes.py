@@ -1,5 +1,5 @@
 """Tests for the v2 orchestration nodes: guard / route / evidence / sufficiency."""
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from langchain_core.documents import Document
 
@@ -227,6 +227,110 @@ def test_sufficiency_insufficient_routes_to_re_planner_within_budget():
 
     merged = {**state, **result}
     assert result["sufficiency_round"] == 1
+    assert after_sufficiency(merged) == "re_planner"
+
+
+def test_fast_path_insufficiency_escalates_once_to_full_planner():
+    state = _base_state(
+        retrieval_context=[_doc("p1")],
+        sufficiency_round=0,
+        execution_path="fast_local",
+        fast_path_escalated=False,
+        complexity_decision={
+            "policy_version": "complexity-router-v1",
+            "initial_path": "fast_local",
+            "final_path": "fast_local",
+            "reason_codes": ["intent_simple"],
+            "vetoes": [],
+            "features": {},
+        },
+    )
+    with patch("app.agent.nodes.sufficiency.evaluate_docs", return_value={
+        "sufficient": False, "reason": "missing", "missing_aspects": ["x"], "parse_failed": False,
+    }):
+        result = sufficiency_node(state, query="q")
+
+    merged = {**state, **result}
+    assert result["execution_path"] == "fast_escalated"
+    assert result["fast_path_escalated"] is True
+    assert result["complexity_decision"]["final_path"] == "fast_escalated"
+    assert result["complexity_decision"]["confidence"] == "revised"
+    assert "evidence_insufficient_escalation" in result["complexity_decision"]["reason_codes"]
+    assert after_sufficiency(merged) == "planner"
+
+
+def test_escalated_fast_path_cannot_escalate_to_full_planner_twice():
+    state = _base_state(
+        retrieval_context=[_doc("p1")],
+        sufficiency_round=1,
+        execution_path="fast_escalated",
+        fast_path_escalated=True,
+        complexity_decision={
+            "policy_version": "complexity-router-v1",
+            "initial_path": "fast_local",
+            "final_path": "fast_escalated",
+            "reason_codes": ["evidence_insufficient_escalation"],
+            "vetoes": [],
+            "features": {},
+        },
+    )
+    with patch("app.agent.nodes.sufficiency.evaluate_docs", return_value={
+        "sufficient": False, "reason": "still missing", "missing_aspects": ["x"], "parse_failed": False,
+    }):
+        result = sufficiency_node(state, query="q")
+
+    merged = {**state, **result}
+    assert result["sufficiency_round"] == 2
+    assert result["degraded"] is True
+    assert after_sufficiency(merged) == "synthesis"
+
+
+def test_groundedness_replanner_marks_fast_path_as_escalated_without_full_planner_loop():
+    from app.agent.nodes.planner import re_planner_node
+
+    state = _base_state(
+        execution_path="fast_local",
+        fast_path_escalated=False,
+        complexity_decision={
+            "policy_version": "complexity-router-v1",
+            "initial_path": "fast_local",
+            "final_path": "fast_local",
+            "confidence": "high",
+            "reason_codes": ["intent_simple"],
+            "vetoes": [],
+            "features": {},
+            "escalated": False,
+        },
+        plan=[],
+        sufficiency_round=0,
+    )
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = MagicMock(
+        content='[{"action":"retrieve_local","params":{"query":"details"},"reason":"fix"}]'
+    )
+    with patch("app.agent.nodes.planner._get_llm", return_value=mock_llm):
+        result = re_planner_node(
+            state,
+            query="q",
+            issues=["citation gap"],
+            missing_aspects=[],
+        )
+
+    assert result["execution_path"] == "fast_escalated"
+    assert result["fast_path_escalated"] is True
+    assert (
+        "groundedness_retrieval_escalation"
+        in result["complexity_decision"]["reason_codes"]
+    )
+    merged = {
+        **state,
+        **result,
+        "sufficiency_result": {
+            "sufficient": False,
+            "parse_failed": False,
+        },
+        "sufficiency_round": 1,
+    }
     assert after_sufficiency(merged) == "re_planner"
 
 

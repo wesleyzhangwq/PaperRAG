@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 
 from app.agent.checkpoint import agent_run_config, open_sync_checkpointer
 from app.agent.nodes.citation_gate import citation_gate_node
+from app.agent.nodes.complexity_router import complexity_router_node
 from app.agent.nodes.evidence import evidence_node
 from app.agent.nodes.executor import executor_node
 from app.agent.nodes.groundedness import groundedness_node
@@ -59,6 +60,15 @@ def route_after_guard(state: AgentState | dict) -> str:
     was already placed into final_answer by the guard node)."""
     guard = state.get("guard_result") or {}
     return "intent" if guard.get("allowed", True) else "presentation"
+
+
+def route_after_complexity(state: AgentState | dict) -> str:
+    """Fast-local decisions already contain a deterministic plan.
+
+    Every missing, forced, fallback, or escalated decision goes through the
+    full planner; this is deliberately fail-closed.
+    """
+    return "route" if state.get("execution_path") == "fast_local" else "planner"
 
 
 def route_after_reflection(state: AgentState | dict, max_reflections: int) -> str:
@@ -93,6 +103,9 @@ def build_agent_graph(db: Session, *, checkpointer=None) -> object:
 
     def _planner(state: AgentState) -> dict:
         return planner_node(state, query=_extract_query(state))
+
+    def _complexity_router(state: AgentState) -> dict:
+        return complexity_router_node(state, query=_extract_query(state))
 
     def _route(state: AgentState) -> dict:
         return route_node(state, query=_extract_query(state))
@@ -149,6 +162,7 @@ def build_agent_graph(db: Session, *, checkpointer=None) -> object:
 
     graph.add_node("guard", _guard)
     graph.add_node("intent", _intent)
+    graph.add_node("complexity_router", _complexity_router)
     graph.add_node("planner", _planner)
     graph.add_node("route", _route)
     graph.add_node("executor", _executor)
@@ -166,7 +180,12 @@ def build_agent_graph(db: Session, *, checkpointer=None) -> object:
         route_after_guard,
         {"intent": "intent", "presentation": "presentation"},
     )
-    graph.add_edge("intent", "planner")
+    graph.add_edge("intent", "complexity_router")
+    graph.add_conditional_edges(
+        "complexity_router",
+        route_after_complexity,
+        {"route": "route", "planner": "planner"},
+    )
     graph.add_edge("planner", "route")
     graph.add_edge("route", "executor")
     graph.add_conditional_edges(
@@ -178,7 +197,7 @@ def build_agent_graph(db: Session, *, checkpointer=None) -> object:
     graph.add_conditional_edges(
         "sufficiency",
         _after_sufficiency,
-        {"synthesis": "synthesis", "re_planner": "re_planner"},
+        {"synthesis": "synthesis", "re_planner": "re_planner", "planner": "planner"},
     )
     graph.add_edge("re_planner", "executor")
     graph.add_edge("synthesis", "groundedness")
@@ -198,6 +217,10 @@ def initial_agent_state(messages: list) -> AgentState:
     return {
         "messages": messages,
         "intent": None,
+        "intent_status": "unknown",
+        "execution_path": None,
+        "fast_path_escalated": False,
+        "complexity_decision": None,
         "plan": [],
         "plan_step_index": 0,
         "retrieval_context": [],
@@ -291,6 +314,8 @@ def _response_from_state(result: dict) -> ChatResponse:
         fallback_telemetry=result.get("fallback_telemetry"),
         llm_usage=list(result.get("llm_usage") or []),
         degraded=bool(result.get("degraded")),
+        execution_path=result.get("execution_path"),
+        complexity_decision=result.get("complexity_decision"),
     )
 
 

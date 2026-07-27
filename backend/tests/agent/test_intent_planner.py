@@ -49,6 +49,51 @@ def test_intent_node_comparison():
     assert "BERT" in result["intent"]["entities"]
 
 
+def test_intent_failure_is_marked_and_fails_closed():
+    mock_llm = MagicMock()
+    mock_llm.invoke.side_effect = TimeoutError("planner unavailable")
+    state = _base_state()
+
+    with patch("app.agent.nodes.intent._get_llm", return_value=mock_llm):
+        result = intent_node(state, query="what is attention")
+
+    assert result["intent_status"] == "fallback"
+    assert result["intent"]["type"] == "complex"
+    assert result["intent"]["complexity"] == "high"
+    assert result["fallback_telemetry"]["fallback_attempted"] is True
+
+
+def test_intent_client_construction_failure_also_fails_closed():
+    state = _base_state()
+
+    with patch(
+        "app.agent.nodes.intent._get_llm",
+        side_effect=RuntimeError("invalid provider configuration"),
+    ):
+        result = intent_node(state, query="what is attention")
+
+    assert result["intent_status"] == "fallback"
+    assert result["intent"]["complexity"] == "high"
+
+
+def test_semantically_invalid_intent_json_fails_closed():
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = MagicMock(
+        content='{"type": "simple", "entities": "attention", "complexity": "low"}'
+    )
+    state = _base_state()
+
+    with patch("app.agent.nodes.intent._get_llm", return_value=mock_llm):
+        result = intent_node(state, query="what is attention")
+
+    assert result["intent_status"] == "fallback"
+    assert result["intent"] == {
+        "type": "complex",
+        "entities": [],
+        "complexity": "high",
+    }
+
+
 def test_planner_node_generates_plan_filtering_structural_steps():
     """evaluate_docs / reasoning_synthesis are graph stages now — the planner
     must filter them out of any LLM-emitted plan."""

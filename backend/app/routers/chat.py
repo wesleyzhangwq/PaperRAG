@@ -281,6 +281,7 @@ async def chat_stream(req: ChatRequest):
             yield encode_sse("done", {
                 "steps_count": runtime["steps_count"],
                 "reflections": runtime["reflections_count"],
+                "execution_path": final_state.get("execution_path"),
                 "llm_usage": usage_payload,
                 "fallback_telemetry": fallback_telemetry,
             })

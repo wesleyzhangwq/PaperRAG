@@ -113,3 +113,35 @@ def test_steps_use_per_trace_detail_not_latest_evaluator_state():
     assert steps[0]["status"] == "completed"
     assert steps[1]["debug"]["extra"]["missing_aspects"] == ["method details"]
     assert steps[1]["status"] == "warning"
+
+
+def test_presentation_exposes_explainable_execution_path_without_raw_query():
+    db = MagicMock()
+    db.query.return_value.filter.return_value.one_or_none.return_value = None
+    decision = {
+        "policy_version": "complexity-router-v1",
+        "initial_path": "fast_local",
+        "final_path": "fast_escalated",
+        "confidence": "high",
+        "reason_codes": ["intent_simple", "evidence_insufficient_escalation"],
+        "vetoes": [],
+        "features": {"query_chars": 18, "history_turns": 0},
+        "escalated": True,
+    }
+    state = {
+        "final_answer": "answer",
+        "sources": [],
+        "retrieval_context": [],
+        "step_traces": [],
+        "sufficiency_result": {"sufficient": False, "parse_failed": False},
+        "reflection_result": {"passed": True},
+        "execution_path": "fast_escalated",
+        "complexity_decision": decision,
+        "degraded": True,
+    }
+
+    presentation = presentation_node(state, db=db)["presentation"]
+
+    assert presentation["execution_path"] == "fast_escalated"
+    assert presentation["complexity_decision"] == decision
+    assert "query" not in presentation["complexity_decision"]

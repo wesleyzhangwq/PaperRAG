@@ -1,5 +1,11 @@
 import { ref } from 'vue'
-import type { SSEPlan, SSEStage, Source, Presentation } from '../types'
+import type {
+  AgentExecutionPath,
+  Presentation,
+  SSEPlan,
+  SSEStage,
+  Source,
+} from '../types'
 
 export type SSEEvent =
   | { type: 'conversation'; data: { conversation_id: string } }
@@ -10,7 +16,14 @@ export type SSEEvent =
   | { type: 'sources'; data: { sources: Source[] } }
   | { type: 'presentation'; data: Presentation }
   | { type: 'elapsed'; data: { ms: number; final?: boolean } }
-  | { type: 'done'; data: { steps_count: number; reflections: number } }
+  | {
+      type: 'done'
+      data: {
+        steps_count: number
+        reflections: number
+        execution_path?: AgentExecutionPath | null
+      }
+    }
   | { type: 'error'; data: { message: string } }
 
 /**

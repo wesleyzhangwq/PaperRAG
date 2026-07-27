@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     # --- Agent ---
     agent_max_plan_steps: int = 7
     agent_max_reflections: int = 2
+    agent_routing_mode: Literal["auto", "full_agentic"] = "full_agentic"
     agent_external_retrieval_enabled: bool = True
     agent_checkpoint_enabled: bool = True
     agent_checkpoint_path: str = str(PROJECT_ROOT / "data" / "langgraph_checkpoints.sqlite")

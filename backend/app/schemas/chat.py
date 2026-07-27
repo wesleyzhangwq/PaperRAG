@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -50,6 +50,10 @@ class ChatResponse(BaseModel):
     fallback_telemetry: Optional[dict] = None
     llm_usage: list[dict] = Field(default_factory=list)
     degraded: bool = False
+    execution_path: Optional[
+        Literal["fast_local", "full_agentic", "fast_escalated"]
+    ] = None
+    complexity_decision: Optional[dict] = None
 
 
 class PaperSummary(BaseModel):

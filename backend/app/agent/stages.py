@@ -21,6 +21,7 @@ from app.agent.streaming import emit
 STAGE_TITLES = {
     "guard": "安全校验",
     "intent": "理解问题",
+    "complexity": "选择执行路径",
     "plan": "规划检索",
     "route": "选择检索来源",
     "retrieve": "多源检索",
@@ -44,6 +45,7 @@ ACTION_LABELS = {
     "get_paper_chunks": "提取论文片段",
     # pipeline node trace actions (v2 orchestration)
     "guard": "安全校验",
+    "complexity_route": "选择执行路径",
     "route": "选择检索来源",
     "evidence_process": "筛选与压缩证据",
     "sufficiency_check": "评估证据充分性",

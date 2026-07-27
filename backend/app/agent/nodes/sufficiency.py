@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import time
 
+from app.agent.nodes.complexity_router import mark_fast_path_escalated
 from app.agent.stages import stage
 from app.agent.state import AgentState, StepTrace
 from app.agent.telemetry import record_fallback
@@ -53,6 +54,21 @@ def sufficiency_node(state: AgentState, *, query: str) -> dict:
             s.done("证据足以支撑回答", detail=result)
         else:
             out["sufficiency_round"] = round_used + 1
+            if (
+                state.get("execution_path") == "fast_local"
+                and not state.get("fast_path_escalated", False)
+            ):
+                decision = mark_fast_path_escalated(
+                    state.get("complexity_decision"),
+                    reason_code="evidence_insufficient_escalation",
+                )
+                out.update(
+                    {
+                        "execution_path": "fast_escalated",
+                        "fast_path_escalated": True,
+                        "complexity_decision": decision,
+                    }
+                )
             if round_used >= MAX_SUFFICIENCY_ROUNDS:
                 out["degraded"] = True
                 out["fallback_telemetry"] = record_fallback(
@@ -98,6 +114,16 @@ def after_sufficiency(state: AgentState, max_rounds: int = MAX_SUFFICIENCY_ROUND
     result = state.get("sufficiency_result") or {}
     if result.get("parse_failed") or result.get("sufficient"):
         return "synthesis"
+    if (
+        state.get("execution_path") == "fast_escalated"
+        and state.get("fast_path_escalated", False)
+        and int(state.get("sufficiency_round", 0)) == 1
+        and "evidence_insufficient_escalation"
+        in list(
+            (state.get("complexity_decision") or {}).get("reason_codes") or []
+        )
+    ):
+        return "planner"
     # state.sufficiency_round was already incremented for this failure
     if int(state.get("sufficiency_round", 0)) > max_rounds:
         return "synthesis"

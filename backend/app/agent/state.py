@@ -38,6 +38,10 @@ class AgentState(TypedDict, total=False):
     # required core
     messages: Annotated[list, add_messages]
     intent: Optional[dict]
+    intent_status: str
+    execution_path: Optional[str]
+    fast_path_escalated: bool
+    complexity_decision: Optional[dict]
     plan: list[StepSpec]
     plan_step_index: int
     retrieval_context: list[Document]

@@ -1,10 +1,12 @@
 """Test agent graph compilation and basic flow (v2 orchestration)."""
 from contextlib import nullcontext
+from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 from langchain_core.documents import Document
 
 from app.agent.graph import (
     build_agent_graph,
+    route_after_complexity,
     route_after_guard,
     route_after_reflection,
     run_agent_eval_sync,
@@ -12,7 +14,7 @@ from app.agent.graph import (
 )
 
 EXPECTED_NODES = {
-    "guard", "intent", "planner", "route", "executor", "evidence",
+    "guard", "intent", "complexity_router", "planner", "route", "executor", "evidence",
     "sufficiency", "synthesis", "groundedness", "re_planner",
     "citation_gate", "presentation",
 }
@@ -39,7 +41,7 @@ def test_run_agent_sync_returns_response():
     mock_llm = MagicMock()
     mock_llm.invoke.side_effect = [
         # intent
-        MagicMock(content='{"type": "simple", "entities": ["attention"], "complexity": "low"}'),
+        MagicMock(content='{"type": "complex", "entities": ["attention"], "complexity": "medium"}'),
         # planner (structural steps are filtered out by the sanitizer)
         MagicMock(content='[{"action": "retrieve_local", "params": {"query": "attention", "top_k": 8}, "reason": "search"}]'),
         # sufficiency (evaluate_docs tool)
@@ -63,6 +65,190 @@ def test_run_agent_sync_returns_response():
 
     assert result.answer is not None
     assert "1706.03762" in result.answer
+
+
+def _paper_db() -> MagicMock:
+    db = MagicMock()
+    paper = MagicMock()
+    paper.title = "Attention Is All You Need"
+    paper.authors = ["Vaswani"]
+    paper.year = 2017
+    paper.primary_category = "cs.CL"
+    paper.doi = None
+    db.query.return_value.filter.return_value.one_or_none.return_value = paper
+    return db
+
+
+def _passing_safety_llms() -> tuple[MagicMock, MagicMock, MagicMock]:
+    sufficiency_llm = MagicMock()
+    sufficiency_llm.invoke.return_value = MagicMock(
+        content='{"sufficient": true, "reason": "enough", "missing_aspects": []}'
+    )
+    synthesis_llm = MagicMock()
+    synthesis_llm.stream.return_value = [
+        MagicMock(content="Attention uses self-attention [arxiv:1706.03762]")
+    ]
+    groundedness_llm = MagicMock()
+    groundedness_llm.invoke.return_value = MagicMock(
+        content=(
+            '{"passed": true, "citation_ok": true, "completeness_ok": true, '
+            '"logic_ok": true, "issues": [], "fix_strategy": null}'
+        )
+    )
+    return sufficiency_llm, synthesis_llm, groundedness_llm
+
+
+def test_fast_path_skips_initial_planner_but_runs_groundedness_and_citation_gate():
+    db = _paper_db()
+    intent_llm = MagicMock()
+    intent_llm.invoke.return_value = MagicMock(
+        content='{"type": "simple", "entities": ["attention"], "complexity": "low"}'
+    )
+    planner_llm = MagicMock()
+    planner_llm.invoke.side_effect = AssertionError("fast path must skip initial planner")
+    sufficiency_llm, synthesis_llm, groundedness_llm = _passing_safety_llms()
+    docs = [
+        (
+            Document(
+                page_content="Attention uses self-attention.",
+                metadata={"paper_id": "1706.03762", "title": "Attention Is All You Need"},
+            ),
+            0.9,
+        )
+    ]
+
+    with (
+        patch("app.agent.nodes.intent._get_llm", return_value=intent_llm),
+        patch(
+            "app.agent.nodes.complexity_router.get_settings",
+            return_value=SimpleNamespace(
+                agent_routing_mode="auto",
+                retrieval_k=20,
+            ),
+        ),
+        patch("app.agent.nodes.planner._get_llm", return_value=planner_llm),
+        patch("app.tools.evaluate_docs._get_llm", return_value=sufficiency_llm),
+        patch("app.agent.nodes.synthesis._get_llm", return_value=synthesis_llm),
+        patch("app.agent.nodes.groundedness._get_llm", return_value=groundedness_llm),
+        patch("app.agent.nodes.executor.retrieve", return_value=docs),
+    ):
+        result = run_agent_sync(db, "what is attention", session_id="fast-path")
+
+    actions = [trace["action"] for trace in result.step_traces or []]
+    assert result.execution_path == "fast_local"
+    assert "complexity_route" in actions
+    assert "planning" not in actions
+    assert actions.count("retrieve_local") == 1
+    assert "groundedness_check" in actions
+    assert "citation_gate" in actions
+    assert actions.index("groundedness_check") < actions.index("citation_gate")
+    planner_llm.invoke.assert_not_called()
+
+
+def test_full_agentic_path_keeps_initial_planner():
+    db = _paper_db()
+    intent_llm = MagicMock()
+    intent_llm.invoke.return_value = MagicMock(
+        content='{"type": "comparison", "entities": ["BERT", "GPT"], "complexity": "high"}'
+    )
+    planner_llm = MagicMock()
+    planner_llm.invoke.return_value = MagicMock(
+        content=(
+            '[{"action": "retrieve_local", "params": {"query": "BERT GPT", "top_k": 20}, '
+            '"reason": "compare"}]'
+        )
+    )
+    sufficiency_llm, synthesis_llm, groundedness_llm = _passing_safety_llms()
+    docs = [
+        (
+            Document(
+                page_content="BERT and GPT evidence.",
+                metadata={"paper_id": "1706.03762", "title": "Paper"},
+            ),
+            0.9,
+        )
+    ]
+
+    with (
+        patch("app.agent.nodes.intent._get_llm", return_value=intent_llm),
+        patch(
+            "app.agent.nodes.complexity_router.get_settings",
+            return_value=SimpleNamespace(
+                agent_routing_mode="auto",
+                retrieval_k=20,
+            ),
+        ),
+        patch("app.agent.nodes.planner._get_llm", return_value=planner_llm),
+        patch("app.tools.evaluate_docs._get_llm", return_value=sufficiency_llm),
+        patch("app.agent.nodes.synthesis._get_llm", return_value=synthesis_llm),
+        patch("app.agent.nodes.groundedness._get_llm", return_value=groundedness_llm),
+        patch("app.agent.nodes.executor.retrieve", return_value=docs),
+    ):
+        result = run_agent_sync(db, "compare BERT and GPT", session_id="full-path")
+
+    actions = [trace["action"] for trace in result.step_traces or []]
+    assert result.execution_path == "full_agentic"
+    assert "planning" in actions
+    assert "groundedness_check" in actions
+    assert "citation_gate" in actions
+    planner_llm.invoke.assert_called_once()
+
+
+def test_fast_path_insufficiency_runs_full_planner_at_most_once():
+    db = _paper_db()
+    intent_llm = MagicMock()
+    intent_llm.invoke.return_value = MagicMock(
+        content='{"type": "simple", "entities": ["attention"], "complexity": "low"}'
+    )
+    planner_llm = MagicMock()
+    planner_llm.invoke.return_value = MagicMock(
+        content=(
+            '[{"action": "retrieve_local", "params": {"query": "attention details", "top_k": 20}, '
+            '"reason": "supplement"}]'
+        )
+    )
+    sufficiency_llm = MagicMock()
+    sufficiency_llm.invoke.side_effect = [
+        MagicMock(
+            content='{"sufficient": false, "reason": "missing details", "missing_aspects": ["details"]}'
+        ),
+        MagicMock(content='{"sufficient": true, "reason": "enough", "missing_aspects": []}'),
+    ]
+    _, synthesis_llm, groundedness_llm = _passing_safety_llms()
+    docs = [
+        (
+            Document(
+                page_content="Attention details.",
+                metadata={"paper_id": "1706.03762", "title": "Attention Is All You Need"},
+            ),
+            0.9,
+        )
+    ]
+
+    with (
+        patch("app.agent.nodes.intent._get_llm", return_value=intent_llm),
+        patch(
+            "app.agent.nodes.complexity_router.get_settings",
+            return_value=SimpleNamespace(
+                agent_routing_mode="auto",
+                retrieval_k=20,
+            ),
+        ),
+        patch("app.agent.nodes.planner._get_llm", return_value=planner_llm),
+        patch("app.tools.evaluate_docs._get_llm", return_value=sufficiency_llm),
+        patch("app.agent.nodes.synthesis._get_llm", return_value=synthesis_llm),
+        patch("app.agent.nodes.groundedness._get_llm", return_value=groundedness_llm),
+        patch("app.agent.nodes.executor.retrieve", return_value=docs),
+    ):
+        result = run_agent_sync(db, "what is attention", session_id="fast-escalated")
+
+    actions = [trace["action"] for trace in result.step_traces or []]
+    assert result.execution_path == "fast_escalated"
+    assert actions.count("planning") == 1
+    assert actions.count("sufficiency_check") == 2
+    assert "groundedness_check" in actions
+    assert "citation_gate" in actions
+    planner_llm.invoke.assert_called_once()
 
 
 def test_run_agent_eval_sync_exposes_raw_and_final_context_paper_ids():
@@ -108,6 +294,8 @@ def test_run_agent_sync_blocked_query_skips_llm_entirely():
         result = run_agent_sync(mock_db, "   ", session_id="blocked-session")
 
     assert "请输入" in result.answer
+    assert result.execution_path is None
+    assert result.complexity_decision is None
     mock_llm.invoke.assert_not_called()
 
 
@@ -119,6 +307,12 @@ def test_route_after_guard_allows():
 
 def test_route_after_guard_blocks_to_presentation():
     assert route_after_guard({"guard_result": {"allowed": False}}) == "presentation"
+
+
+def test_route_after_complexity_uses_fast_plan_or_full_planner():
+    assert route_after_complexity({"execution_path": "fast_local"}) == "route"
+    assert route_after_complexity({"execution_path": "full_agentic"}) == "planner"
+    assert route_after_complexity({"execution_path": "fast_escalated"}) == "planner"
 
 
 def test_route_after_reflection_passes_to_citation_gate():

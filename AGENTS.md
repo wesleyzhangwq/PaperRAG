@@ -13,69 +13,61 @@ The system is designed for portfolio/interview presentation: it prioritizes
 
 ## Architecture Overview
 
-The graph mirrors the enterprise agentic-RAG pipeline — one node per stage
-(安全校验 → 意图 → 规划 → 检索路由 → 多源检索 → 证据处理 → 充分性判断 →
-生成 → groundedness → 引用过滤 → 输出):
+The graph mirrors the enterprise agentic-RAG pipeline with 13 nodes. A
+deterministic complexity router sits between intent classification and
+planning. `full_agentic` is the safe default and always retains the planner;
+`auto` is an explicit opt-in that may give a low-risk query one deterministic
+local retrieval step instead. Both branches rejoin before retrieval and keep
+the complete evidence and citation-safety chain:
 
 ```
 User Query + Chat History
         │
         ▼
-┌──────────────┐ blocked (refusal text)
-│    guard      │ ───────────────────────────────────────────────┐
-└──────┬───────┘  deterministic: empty/oversize/injection flags  │
-       ▼ ok                                                      │
-┌──────────────┐                                                 │
-│    intent     │  LLM classifies: type, entities, complexity    │
-└──────┬───────┘                                                 │
-       ▼                                                         │
-┌──────────────┐                                                 │
-│   planner     │  LLM plans RETRIEVAL-ONLY steps                │
-└──────┬───────┘  (sufficiency & synthesis are graph stages)     │
-       ▼                                                         │
-┌──────────────┐                                                 │
-│    route      │  deterministic routing policy:                 │
-└──────┬───────┘  local always / arXiv for recency / drop       │
-       ▼          unconfigured web                               │
-┌──────────────┐ ◄──────────────────────────────┐                │
-│   executor    │  Multi-source retrieval loop   │                │
-│   (loop)      │  (6 tools, stable step ids)    │                │
-└──────┬───────┘                                 │                │
-       ▼ plan exhausted                          │                │
-┌──────────────┐                                 │                │
-│   evidence    │  dedupe → score rerank →       │                │
-└──────┬───────┘  per-paper cap → char budget    │                │
-       ▼                                         │                │
-┌──────────────┐  insufficient + budget left     │                │
-│  sufficiency  │ ──────────────────────► ┌──────────────┐       │
-└──────┬───────┘                          │  re_planner   │       │
-       ▼ sufficient / degraded            └──────▲───────┘       │
-┌──────────────┐                                 │                │
-│  synthesis    │  Streams cited answer tokens   │                │
-│  (streaming)  │ ◄───────── re_generate ──┐     │                │
-└──────┬───────┘                           │     │                │
-       ▼                                   │     │                │
-┌──────────────┐  fail + re_retrieve ──────┼─────┘                │
-│ groundedness  │  deterministic citation   │                      │
-│  (2 layers)   │  precheck + LLM 3-dim ────┘                      │
-└──────┬───────┘                                                  │
-       ▼ pass / budget exhausted                                  │
-┌──────────────┐                                                  │
-│ citation_gate │  resolve [arxiv:ID] → Sources; STRIP            │
-└──────┬───────┘  unverifiable citations; ACL hook                │
-       ▼                                                          │
-┌──────────────┐                                                  │
-│ presentation  │ ◄────────────────────────────────────────────────┘
-└──────┬───────┘  confidence verdict, step labels, source cards
-       ▼
-      END         (logging via persisted traces + /feedback loop)
+      guard
+   ├─ blocked → presentation → END
+   └─ ok
+        │
+        ▼
+      intent
+        │
+        ▼
+ complexity_router
+   ├─ full_agentic (default, forced, or any veto) → planner ┐
+   └─ fast_local (auto only; one retrieve_local plan) ──────┤
+                                                            ▼
+                                                          route
+                                                            │
+                                                            ▼
+                                                     executor (loop)
+                                                            │ plan exhausted
+                                                            ▼
+                                                         evidence
+                                                            │
+                                                            ▼
+                                                       sufficiency
+   ├─ sufficient / degraded ────────────────────────────────┤
+   ├─ first fast-path insufficiency → planner once          │
+   │  (execution_path becomes fast_escalated) → route       │
+   └─ other insufficiency + budget → re_planner → executor  │
+                                                            ▼
+                                                     synthesis (streaming)
+                                                            │
+                                                            ▼
+                                                      groundedness
+   ├─ re_generate ───────────────────────────────→ synthesis
+   ├─ re_retrieve ───────────────────────────────→ re_planner
+   └─ pass / budget exhausted
+        │
+        ▼
+ citation_gate → presentation → END
 ```
 
 ### Tech Stack
 
 | Layer     | Technology                                       |
 |-----------|--------------------------------------------------|
-| Agent     | LangGraph StateGraph (12 nodes + conditional edges) |
+| Agent     | LangGraph StateGraph (13 nodes + conditional edges) |
 | LLM       | MiniMax M2.7 via OpenAI-compatible API           |
 | Embedding | SiliconFlow BAAI/bge-m3 via OpenAI-compatible API |
 | Vector DB | Qdrant (hybrid: dense + BM25 sparse fusion)      |
@@ -88,8 +80,12 @@ User Query + Chat History
 
 ## Design Principles
 
-1. **Adaptive over fixed.** The planner generates per-query execution plans instead of a hardcoded
-   pipeline. A simple factual question gets 3 steps; a complex comparison gets 7+.
+1. **Conservative routing before adaptive planning.** The default
+   `AGENT_ROUTING_MODE=full_agentic` always preserves the LLM planner. The
+   opt-in `auto` mode may use one deterministic local retrieval step only for
+   high-confidence, low-risk queries; uncertainty and policy vetoes retain the
+   planner. A fast-path run still passes through sufficiency, synthesis,
+   groundedness, and the citation gate, and may be marked `fast_escalated`.
 
 2. **Self-verification.** Every answer passes through a 3-dimension reflection check (citation
    faithfulness, completeness, logical consistency) before reaching the user. Failed checks
@@ -124,6 +120,7 @@ backend/app/
 │   ├── nodes/                 # One file per graph node
 │   │   ├── guard.py           # Content safety & validity checks (deterministic)
 │   │   ├── intent.py          # Query classification (LLM)
+│   │   ├── complexity_router.py # Fast/full policy + bounded audit decision
 │   │   ├── planner.py         # Retrieval-only plan + re_planner (LLM)
 │   │   ├── route.py           # Source-routing policy (deterministic)
 │   │   ├── executor.py        # Tool dispatch loop (no LLM, calls tools)
@@ -210,17 +207,19 @@ POST /chat/stream → text/event-stream
 
 event: conversation   → { conversation_id }
 event: stage          → { id, stage, status, title, summary?, detail?, duration_ms? }
-                        # id: "guard"|"intent"|"plan"|"route"|"step:N"|"evidence"|
-                        #     "sufficiency"|"synthesis"|"groundedness"|"citation"
+                        # id: "guard"|"intent"|"complexity"|"plan"|"route"|"step:N"|
+                        #     "evidence"|"sufficiency"|"synthesis"|"groundedness"|
+                        #     "citation"
                         # status: start | done | warning | failed | skipped
 event: plan           → { revision, steps: [{ id: "step:N", action, title, reason }] }
                         # re-published on every plan change (planner/route/re_planner)
 event: answer_start   → { attempt, reset }            # re-generation resets the bubble
 event: token          → { t: "partial text" }         # real-time synthesis tokens
 event: sources        → { sources: [{ paper_id, title, ... }] }
-event: presentation   → { confidence, steps, retrieval_summary, source_cards }
+event: presentation   → { confidence, steps, retrieval_summary, source_cards,
+                          execution_path, complexity_decision }
 event: elapsed        → { ms }                        # heartbeat
-event: done           → { steps_count, reflections }
+event: done           → { steps_count, reflections, execution_path }
 event: error          → { message, type }
 ```
 
@@ -254,6 +253,7 @@ Fix strategies on failure:
 # Agent behavior
 AGENT_MAX_PLAN_STEPS=7          # Max steps the planner can generate
 AGENT_MAX_REFLECTIONS=2         # Max reflection retries before force-output
+AGENT_ROUTING_MODE=full_agentic # Safe default; auto requires frozen-eval acceptance
 
 # Retrieval tuning
 RETRIEVAL_K=12                  # Initial retrieval count
@@ -267,6 +267,11 @@ ARXIV_MAX_RESULTS=5             # arXiv results per query
 # Security
 ADMIN_API_KEY=                  # Protects /ingest endpoint; open if empty
 ```
+
+The complexity router has unit and graph-integration coverage, but its
+`dev50`/`frozen200` latency and quality evaluation has **not** been run in this
+worktree. Do not enable `auto` by default or claim a latency/quality improvement
+until those frozen-evaluation acceptance checks pass.
 
 ---
 

@@ -1,4 +1,4 @@
-"""Test agent graph compilation and basic flow (v2 orchestration)."""
+"""Test agent graph compilation and basic flow (lean v3 orchestration)."""
 from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
@@ -14,9 +14,14 @@ from app.agent.graph import (
 )
 
 EXPECTED_NODES = {
-    "guard", "intent", "complexity_router", "planner", "route", "executor", "evidence",
-    "sufficiency", "synthesis", "groundedness", "re_planner",
-    "citation_gate", "presentation",
+    "guard",
+    "analyze",
+    "plan",
+    "executor",
+    "evidence_gate",
+    "synthesis",
+    "groundedness",
+    "finalize",
 }
 
 
@@ -26,6 +31,17 @@ def test_graph_compiles_with_pipeline_nodes():
     assert graph is not None
     nodes = set(graph.get_graph().nodes.keys())
     assert EXPECTED_NODES <= nodes
+    assert not {
+        "intent",
+        "complexity_router",
+        "planner",
+        "route",
+        "evidence",
+        "sufficiency",
+        "re_planner",
+        "citation_gate",
+        "presentation",
+    } & nodes
 
 
 def test_run_agent_sync_returns_response():

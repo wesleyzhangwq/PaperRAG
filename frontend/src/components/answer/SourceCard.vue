@@ -5,11 +5,16 @@
       <div class="flex-1 min-w-0">
         <div class="flex items-start justify-between gap-2">
           <a
-            :href="source.arxiv_url"
+            v-if="source.arxiv_url"
+            :href="source.arxiv_url || undefined"
             target="_blank"
             rel="noopener"
             class="text-sm font-medium text-text-primary hover:text-accent leading-snug line-clamp-2"
           >{{ source.title }}</a>
+          <span
+            v-else
+            class="text-sm font-medium text-text-primary leading-snug line-clamp-2"
+          >{{ source.title }}</span>
           <RelevancePill :level="source.relevance" />
         </div>
         <div class="mt-1 flex items-center gap-2 text-xs text-text-tertiary">

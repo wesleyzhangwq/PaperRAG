@@ -7,6 +7,7 @@ import re
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.core.config import get_settings
+from app.utils.document import DocumentBlock
 
 
 @dataclass
@@ -14,6 +15,9 @@ class PaperChunk:
     chunk_index: int
     text: str
     page_num: int | None
+    modality: str = "text"
+    source_locator: dict | None = None
+    section: str | None = None
 
 
 _SENTENCE_SEPARATORS = ["\n\n", "\n", ". ", "! ", "? ", "。", "！", "？", " ", ""]
@@ -117,5 +121,46 @@ def chunk_pages(pages: list[tuple[int, str]]) -> list[PaperChunk]:
             chunk_index=len(results),
             text=cleaned,
             page_num=page_num,
+            modality="text",
+            source_locator={"page": page_num} if page_num is not None else {},
         ))
+    return results
+
+
+def chunk_document_blocks(blocks: list[DocumentBlock]) -> list[PaperChunk]:
+    """Split normalized blocks while preserving modality and source locator."""
+    settings = get_settings()
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=settings.chunk_size,
+        chunk_overlap=settings.chunk_overlap,
+        separators=_SENTENCE_SEPARATORS,
+        length_function=len,
+    )
+    results: list[PaperChunk] = []
+
+    for block in blocks:
+        raw = _clean_text(block.text)
+        if not raw:
+            continue
+        for piece in splitter.split_text(raw):
+            cleaned = _clean_text(piece)
+            min_chars = (
+                min(settings.chunk_min_chars, 20)
+                if block.modality in {"table", "image_ocr"}
+                else settings.chunk_min_chars
+            )
+            if _is_noisy(cleaned, min_chars, settings.chunk_noise_symbol_ratio):
+                continue
+            locator = dict(block.source_locator or {})
+            page = locator.get("page")
+            results.append(
+                PaperChunk(
+                    chunk_index=len(results),
+                    text=cleaned,
+                    page_num=int(page) if isinstance(page, int) else None,
+                    modality=block.modality,
+                    source_locator=locator,
+                    section=block.section,
+                )
+            )
     return results

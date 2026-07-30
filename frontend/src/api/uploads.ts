@@ -10,6 +10,15 @@ export async function importArxivPapers(arxivIds: string[]): Promise<ArxivImport
   return data
 }
 
+export async function uploadDocumentFiles(files: File[]): Promise<ArxivImportBatchResponse> {
+  const form = new FormData()
+  for (const file of files) form.append('files', file)
+  const { data } = await api.post<ArxivImportBatchResponse>('/upload/files', form, {
+    timeout: 60000,
+  })
+  return data
+}
+
 export async function getUploadJob(jobId: string): Promise<UploadJob> {
   const { data } = await api.get<UploadJob>(`/upload/jobs/${jobId}`)
   return data

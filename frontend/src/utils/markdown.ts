@@ -3,7 +3,7 @@ import type { Source } from '../types'
 
 const md = new MarkdownIt({ html: false, linkify: true, breaks: true })
 
-const CITATION_RE = /\[arxiv:(\d{4}\.\d{4,6})\]/g
+const CITATION_RE = /\[(?:arxiv|source):([A-Za-z0-9][A-Za-z0-9._:-]{0,63})\]/g
 const CITATION_TOKEN_PREFIX = 'PAPERRAG_CITATION_'
 const THINK_BLOCK_RE = /<think>[\s\S]*?<\/think>/gi
 const THINK_OPEN_RE = /<think>[\s\S]*$/i
@@ -51,7 +51,7 @@ function stripHiddenReasoning(text: string): string {
 export function extractCitedIds(text: string): string[] {
   const ids: string[] = []
   let match
-  const re = /\[arxiv:(\d{4}\.\d{4,6})\]/g
+  const re = /\[(?:arxiv|source):([A-Za-z0-9][A-Za-z0-9._:-]{0,63})\]/g
   while ((match = re.exec(text)) !== null) {
     if (!ids.includes(match[1])) ids.push(match[1])
   }

@@ -75,7 +75,17 @@ def _format_context(documents: list) -> str:
         elif source_tag == "web_search":
             header = "[web_search]"
         else:
-            header = f"[arxiv:{md.get('paper_id', '?')} | {md.get('title', '')[:100]} | page={md.get('page_num', '?')}]"
+            citation_kind = (
+                "arxiv" if md.get("source_kind", "arxiv") == "arxiv" else "source"
+            )
+            locator = md.get("source_locator") or {
+                "page": md.get("page_num", "?")
+            }
+            header = (
+                f"[{citation_kind}:{md.get('paper_id', '?')} | "
+                f"{md.get('title', '')[:100]} | modality={md.get('modality', 'text')} | "
+                f"locator={locator}]"
+            )
         parts.append(f"{header}\n{d.page_content}")
     return "\n\n---\n\n".join(parts)
 

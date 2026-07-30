@@ -3,7 +3,7 @@
 ## What This Project Is
 
 Cite Scope is an **Agentic RAG** (Retrieval-Augmented Generation) system for academic paper Q&A.
-It imports arXiv metadata and PDFs into a vector store, then uses an LLM-driven adaptive planning agent
+It imports arXiv papers and heterogeneous local documents into a vector store, then uses an LLM-driven adaptive planning agent
 to retrieve, evaluate, and synthesize cited answers — with self-reflection for quality control.
 
 The system is designed for portfolio/interview presentation: it prioritizes
@@ -13,61 +13,53 @@ The system is designed for portfolio/interview presentation: it prioritizes
 
 ## Architecture Overview
 
-The graph mirrors the enterprise agentic-RAG pipeline with 13 nodes. A
-deterministic complexity router sits between intent classification and
-planning. `full_agentic` is the safe default and always retains the planner;
-`auto` is an explicit opt-in that may give a low-risk query one deterministic
-local retrieval step instead. Both branches rejoin before retrieval and keep
-the complete evidence and citation-safety chain:
+The graph uses **8 checkpoint/control nodes** while preserving the **13 former
+node responsibilities** and fine-grained stage/trace observability. Stages that
+never branch or retry independently are composed inside a single graph node. A deterministic complexity router still sits between intent
+classification and planning. `full_agentic` is the safe default and always
+retains the planner; `auto` is an explicit opt-in that may give a low-risk query
+one deterministic local retrieval step instead. Both branches keep the full
+evidence and citation-safety chain:
 
 ```
 User Query + Chat History
         │
         ▼
       guard
-   ├─ blocked → presentation → END
+   ├─ blocked → finalize(presentation) → END
    └─ ok
         │
         ▼
-      intent
-        │
-        ▼
- complexity_router
-   ├─ full_agentic (default, forced, or any veto) → planner ┐
-   └─ fast_local (auto only; one retrieve_local plan) ──────┤
-                                                            ▼
-                                                          route
-                                                            │
-                                                            ▼
-                                                     executor (loop)
-                                                            │ plan exhausted
-                                                            ▼
-                                                         evidence
-                                                            │
-                                                            ▼
-                                                       sufficiency
-   ├─ sufficient / degraded ────────────────────────────────┤
-   ├─ first fast-path insufficiency → planner once          │
-   │  (execution_path becomes fast_escalated) → route       │
-   └─ other insufficiency + budget → re_planner → executor  │
-                                                            ▼
-                                                     synthesis (streaming)
-                                                            │
-                                                            ▼
-                                                      groundedness
-   ├─ re_generate ───────────────────────────────→ synthesis
-   ├─ re_retrieve ───────────────────────────────→ re_planner
+ analyze(intent + complexity_router)
+   ├─ full_agentic → plan(planner + route) ┐
+   └─ fast_local → plan(route only) ───────┤
+                                           ▼
+                                      executor (loop)
+                                           │ plan exhausted
+                                           ▼
+                          evidence_gate(evidence + sufficiency)
+   ├─ sufficient / degraded ───────────────┤
+   ├─ first fast-path insufficiency → plan(full planner once)
+   │  (execution_path becomes fast_escalated)
+   └─ other insufficiency + budget → plan(re_planner) → executor
+                                           ▼
+                                    synthesis (streaming)
+                                           │
+                                           ▼
+                                     groundedness
+   ├─ re_generate ───────────────────────→ synthesis
+   ├─ re_retrieve ───────────────────────→ plan(re_planner)
    └─ pass / budget exhausted
         │
         ▼
- citation_gate → presentation → END
+ finalize(citation_gate + presentation) → END
 ```
 
 ### Tech Stack
 
 | Layer     | Technology                                       |
 |-----------|--------------------------------------------------|
-| Agent     | LangGraph StateGraph (13 nodes + conditional edges) |
+| Agent     | LangGraph StateGraph (8 control nodes, fine-grained stages/traces) |
 | LLM       | MiniMax M2.7 via OpenAI-compatible API           |
 | Embedding | SiliconFlow BAAI/bge-m3 via OpenAI-compatible API |
 | Vector DB | Qdrant (hybrid: dense + BM25 sparse fusion)      |
@@ -105,6 +97,17 @@ User Query + Chat History
 5. **Separation of concerns in graph nodes.** Nodes return partial state updates and only emit
    LangGraph custom events for live UI traces. HTTP and SSE protocol mapping stay in
    `backend/app/routers/chat.py` and `backend/app/agent/streaming.py`.
+
+6. **Checkpoint boundaries, not diagram inflation.** A LangGraph node exists
+   when the runtime may branch, retry, loop, or persist there. Sequential
+   intent/complexity, evidence/sufficiency, and citation/presentation stages are
+   composed while retaining separate stage events and unit-testable functions.
+
+7. **Provenance-first heterogeneous ingestion.** PDF, DOCX, PPTX, HTML,
+   Markdown/TXT, CSV/XLSX, and images share one ingest state machine. Normalized
+   blocks preserve `text`, `table`, or `image_ocr` modality plus page, slide,
+   sheet, section, or image locators. Uploaded documents cite as
+   `[source:PAPER_ID]`; arXiv citations remain backward-compatible.
 
 ---
 
@@ -145,12 +148,13 @@ backend/app/
 │   ├── chat.py                # POST /chat (sync) + POST /chat/stream (SSE)
 │   ├── conversations.py       # CRUD for conversation sessions
 │   ├── papers.py              # GET /papers (list/search)
-│   ├── upload.py              # POST /upload/arxiv (arXiv import + auto-ingest)
-│   └── ingest.py              # POST /ingest (admin: re-process PDFs)
+│   ├── upload.py              # arXiv import + heterogeneous file jobs/progress
+│   └── ingest.py              # POST /ingest (admin: re-process corpus)
 │
 ├── services/
 │   ├── retriever.py           # Core retrieval engine (vector + BM25 + cache)
-│   └── ingest.py              # PDF → chunks → Qdrant ingestion pipeline
+│   ├── document_parser.py     # PDF/Office/web/text/table/image OCR normalization
+│   └── ingest.py              # parse → normalize → chunk → index → persist
 │
 ├── db/
 │   ├── mysql.py               # SQLAlchemy engine + session
@@ -256,9 +260,16 @@ AGENT_MAX_REFLECTIONS=2         # Max reflection retries before force-output
 AGENT_ROUTING_MODE=full_agentic # Safe default; auto requires frozen-eval acceptance
 
 # Retrieval tuning
-RETRIEVAL_K=12                  # Initial retrieval count
-HYBRID_ALPHA=0.3                # Vector vs BM25 weight (0=pure BM25, 1=pure vector)
-HYBRID_OVERSAMPLE=2.5           # Oversample factor for hybrid fusion
+RETRIEVAL_K=20                  # Candidates retained after hybrid fusion
+FINAL_CONTEXT_K=5               # Final synthesis context
+HYBRID_ALPHA=0.5                # Vector vs BM25 weight (0=pure BM25, 1=pure vector)
+HYBRID_OVERSAMPLE=4             # Dense candidate oversampling before fusion
+HYBRID_MAX_FETCH=96             # Hard candidate-fetch bound
+
+# Heterogeneous ingestion
+INGEST_MAX_FILE_MB=50
+INGEST_OCR_ENABLED=true
+INGEST_OCR_LANGUAGES=eng+chi_sim
 
 # External tools
 TAVILY_API_KEY=                 # Web search (optional, graceful fallback)

@@ -1,26 +1,30 @@
 """LangGraph agent graph: build, compile, and run.
 
-v2 orchestration — node-per-stage, mirroring the enterprise agentic RAG
-pipeline (安全校验 → 意图 → 规划 → 检索路由 → 多源检索 → 证据处理 →
-充分性判断 → 生成 → groundedness → 引用过滤 → 输出):
+v3 orchestration uses eight checkpoint/control nodes while retaining the
+thirteen former node responsibilities and their fine-grained SSE/StepTrace
+observability. Adjacent stages that never branch independently are composed
+inside one graph node:
 
     guard ──blocked──────────────────────────────────────────┐
       │ok                                                    │
-    intent → planner → route → executor ⟲                    │
-                                  │ (plan exhausted)         │
-                               evidence                      │
-                                  │                          │
-                             sufficiency ──insufficient──→ re_planner
-                                  │ sufficient/degraded        │
-                              synthesis ←──re_generate──┐     │
-                                  │                     │     │
-                             groundedness ──re_retrieve─┼──→ re_planner
-                                  │ pass/budget         │     (loops back to executor)
-                             citation_gate              │
-                                  │                     │
-                             presentation ←─────────────┘
-                                  │
-                                 END
+    analyze(intent + complexity)                             │
+      │                                                      │
+    plan(planner/re-planner + route) ←────────────────┐      │
+      │                                               │      │
+    executor ⟲                                       │      │
+      │ plan exhausted                               │      │
+    evidence_gate(evidence + sufficiency) ───────────┘      │
+      │ sufficient/degraded                                  │
+    synthesis ←────────────────────────── re_generate ┐      │
+      │                                               │      │
+    groundedness ──────────────────────── re_retrieve ┘      │
+      │ pass/budget                                          │
+    finalize(citation_gate + presentation) ←─────────────────┘
+      │
+     END
+
+Graph nodes now align with branch, retry, or persistence boundaries. The
+internal stage functions remain independently testable and observable.
 """
 from __future__ import annotations
 
@@ -92,32 +96,84 @@ def route_after_reflection(state: AgentState | dict, max_reflections: int) -> st
 
 
 def build_agent_graph(db: Session, *, checkpointer=None) -> object:
-    """Build and compile the agentic RAG graph (v2 orchestration)."""
+    """Build and compile the lean agentic RAG graph (v3 orchestration)."""
     settings = get_settings()
 
     def _guard(state: AgentState) -> dict:
         return guard_node(state, query=_extract_query(state))
 
-    def _intent(state: AgentState) -> dict:
-        return intent_node(state, query=_extract_query(state))
+    def _apply(state: AgentState | dict, *updates: dict) -> tuple[dict, dict]:
+        """Apply sequential partial updates without returning the full state.
 
-    def _planner(state: AgentState) -> dict:
-        return planner_node(state, query=_extract_query(state))
+        Returning a full state would replay reducer-backed fields such as
+        ``messages``. Composed nodes therefore maintain a local working view
+        while emitting only the accumulated partial update.
+        """
+        working = dict(state)
+        combined: dict = {}
+        for update in updates:
+            working.update(update)
+            combined.update(update)
+        return working, combined
 
-    def _complexity_router(state: AgentState) -> dict:
-        return complexity_router_node(state, query=_extract_query(state))
+    def _analyze(state: AgentState) -> dict:
+        query = _extract_query(state)
+        intent_update = intent_node(state, query=query)
+        working, combined = _apply(state, intent_update)
+        complexity_update = complexity_router_node(working, query=query)
+        _, combined = _apply(state, combined, complexity_update)
+        return combined
 
-    def _route(state: AgentState) -> dict:
-        return route_node(state, query=_extract_query(state))
+    def _plan(state: AgentState) -> dict:
+        """Create or supplement a plan, then enforce source-routing policy."""
+        query = _extract_query(state)
+        working = dict(state)
+        combined: dict = {}
+
+        fast_initial_plan = (
+            state.get("execution_path") == "fast_local"
+            and bool(state.get("plan"))
+            and not state.get("fast_path_escalated", False)
+        )
+        fast_sufficiency_escalation = (
+            state.get("execution_path") == "fast_escalated"
+            and state.get("fast_path_escalated", False)
+            and "evidence_insufficient_escalation"
+            in list((state.get("complexity_decision") or {}).get("reason_codes") or [])
+            and int(state.get("sufficiency_round", 0)) == 1
+        )
+
+        if not fast_initial_plan:
+            if not state.get("plan") or fast_sufficiency_escalation:
+                plan_update = planner_node(working, query=query)
+            else:
+                reflection = state.get("reflection_result") or {}
+                sufficiency = state.get("sufficiency_result") or {}
+                issues = list(reflection.get("issues") or []) or [
+                    str(sufficiency.get("reason") or "")
+                ]
+                missing = list(sufficiency.get("missing_aspects") or [])
+                plan_update = re_planner_node(
+                    working,
+                    query=query,
+                    issues=[item for item in issues if item],
+                    missing_aspects=missing,
+                )
+            working, combined = _apply(working, plan_update)
+
+        route_update = route_node(working, query=query)
+        _, combined = _apply(state, combined, route_update)
+        return combined
 
     def _executor(state: AgentState) -> dict:
         return executor_node(state, db=db)
 
-    def _evidence(state: AgentState) -> dict:
-        return evidence_node(state)
-
-    def _sufficiency(state: AgentState) -> dict:
-        return sufficiency_node(state, query=_extract_query(state))
+    def _evidence_gate(state: AgentState) -> dict:
+        evidence_update = evidence_node(state)
+        working, combined = _apply(state, evidence_update)
+        sufficiency_update = sufficiency_node(working, query=_extract_query(state))
+        _, combined = _apply(state, combined, sufficiency_update)
+        return combined
 
     def _synthesis(state: AgentState) -> dict:
         query = _extract_query(state)
@@ -129,28 +185,19 @@ def build_agent_graph(db: Session, *, checkpointer=None) -> object:
     def _groundedness(state: AgentState) -> dict:
         return groundedness_node(state, query=_extract_query(state))
 
-    def _re_planner(state: AgentState) -> dict:
-        query = _extract_query(state)
-        # Entered from sufficiency (missing aspects) or groundedness (issues).
-        reflection = state.get("reflection_result") or {}
-        sufficiency = state.get("sufficiency_result") or {}
-        issues = list(reflection.get("issues") or []) or [str(sufficiency.get("reason") or "")]
-        missing = list(sufficiency.get("missing_aspects") or [])
-        return re_planner_node(
-            state,
-            query=query,
-            issues=[i for i in issues if i],
-            missing_aspects=missing,
-        )
-
-    def _citation_gate(state: AgentState) -> dict:
-        return citation_gate_node(state, db=db)
-
-    def _presentation(state: AgentState) -> dict:
-        return presentation_node(state, db=db)
+    def _finalize(state: AgentState) -> dict:
+        # A guard refusal contains no citations to resolve and must not touch
+        # retrieval persistence. All answer paths still pass citation_gate.
+        if not (state.get("guard_result") or {}).get("allowed", True):
+            return presentation_node(state, db=db)
+        citation_update = citation_gate_node(state, db=db)
+        working, combined = _apply(state, citation_update)
+        presentation_update = presentation_node(working, db=db)
+        _, combined = _apply(state, combined, presentation_update)
+        return combined
 
     def _should_continue_executing(state: AgentState) -> str:
-        return "executor" if state["plan_step_index"] < len(state["plan"]) else "evidence"
+        return "executor" if state["plan_step_index"] < len(state["plan"]) else "evidence_gate"
 
     def _after_sufficiency(state: AgentState) -> str:
         return after_sufficiency(state)
@@ -161,53 +208,39 @@ def build_agent_graph(db: Session, *, checkpointer=None) -> object:
     graph = StateGraph(AgentState)
 
     graph.add_node("guard", _guard)
-    graph.add_node("intent", _intent)
-    graph.add_node("complexity_router", _complexity_router)
-    graph.add_node("planner", _planner)
-    graph.add_node("route", _route)
+    graph.add_node("analyze", _analyze)
+    graph.add_node("plan", _plan)
     graph.add_node("executor", _executor)
-    graph.add_node("evidence", _evidence)
-    graph.add_node("sufficiency", _sufficiency)
+    graph.add_node("evidence_gate", _evidence_gate)
     graph.add_node("synthesis", _synthesis)
     graph.add_node("groundedness", _groundedness)
-    graph.add_node("re_planner", _re_planner)
-    graph.add_node("citation_gate", _citation_gate)
-    graph.add_node("presentation", _presentation)
+    graph.add_node("finalize", _finalize)
 
     graph.set_entry_point("guard")
     graph.add_conditional_edges(
         "guard",
         route_after_guard,
-        {"intent": "intent", "presentation": "presentation"},
+        {"intent": "analyze", "presentation": "finalize"},
     )
-    graph.add_edge("intent", "complexity_router")
-    graph.add_conditional_edges(
-        "complexity_router",
-        route_after_complexity,
-        {"route": "route", "planner": "planner"},
-    )
-    graph.add_edge("planner", "route")
-    graph.add_edge("route", "executor")
+    graph.add_edge("analyze", "plan")
+    graph.add_edge("plan", "executor")
     graph.add_conditional_edges(
         "executor",
         _should_continue_executing,
-        {"executor": "executor", "evidence": "evidence"},
+        {"executor": "executor", "evidence_gate": "evidence_gate"},
     )
-    graph.add_edge("evidence", "sufficiency")
     graph.add_conditional_edges(
-        "sufficiency",
+        "evidence_gate",
         _after_sufficiency,
-        {"synthesis": "synthesis", "re_planner": "re_planner", "planner": "planner"},
+        {"synthesis": "synthesis", "re_planner": "plan", "planner": "plan"},
     )
-    graph.add_edge("re_planner", "executor")
     graph.add_edge("synthesis", "groundedness")
     graph.add_conditional_edges(
         "groundedness",
         _after_reflection,
-        {"citation_gate": "citation_gate", "re_planner": "re_planner", "synthesis": "synthesis"},
+        {"citation_gate": "finalize", "re_planner": "plan", "synthesis": "synthesis"},
     )
-    graph.add_edge("citation_gate", "presentation")
-    graph.add_edge("presentation", END)
+    graph.add_edge("finalize", END)
 
     return graph.compile(checkpointer=checkpointer)
 

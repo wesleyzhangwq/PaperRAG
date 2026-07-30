@@ -271,3 +271,34 @@ def test_citation_gate_keeps_context_only_citation_with_minimal_source():
     assert result["sources"][0].paper_id == "1706.03762"
     assert result["sources"][0].title == "Attention Is All You Need"
     assert result["removed_citations"] == []
+
+
+def test_citation_gate_resolves_uploaded_source_without_fake_arxiv_url():
+    state = _base_state(
+        final_answer="Local evidence [source:local-a1b2c3].",
+        retrieval_context=[
+            Document(
+                page_content="OCR evidence",
+                metadata={"paper_id": "local-a1b2c3", "source_kind": "upload"},
+            )
+        ],
+        synthesis_context_paper_ids=["local-a1b2c3"],
+    )
+    mock_db = MagicMock()
+    mock_paper = MagicMock(
+        title="Uploaded Report",
+        authors=[],
+        year=2026,
+        primary_category="local",
+        source_kind="upload",
+        media_type="application/pdf",
+        doi=None,
+    )
+    mock_db.query.return_value.filter.return_value.one_or_none.return_value = mock_paper
+
+    result = citation_gate_node(state, db=mock_db)
+
+    assert result["removed_citations"] == []
+    assert result["sources"][0].paper_id == "local-a1b2c3"
+    assert result["sources"][0].source_kind == "upload"
+    assert result["sources"][0].arxiv_url is None

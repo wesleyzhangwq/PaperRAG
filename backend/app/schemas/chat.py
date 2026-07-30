@@ -29,6 +29,8 @@ class Source(BaseModel):
     authors: list[str] = []
     year: Optional[int] = None
     primary_category: Optional[str] = None
+    source_kind: str = "arxiv"
+    media_type: Optional[str] = None
     doi: Optional[str] = None
     arxiv_url: Optional[str] = None
     score: Optional[float] = None
@@ -68,6 +70,9 @@ class PaperSummary(BaseModel):
     doi: Optional[str] = None
     abstract: Optional[str] = None
     arxiv_url: Optional[str] = None
+    source_kind: str = "arxiv"
+    media_type: Optional[str] = None
+    original_filename: Optional[str] = None
     ingest_status: str
     num_chunks: int
 
@@ -82,7 +87,7 @@ class CorpusRepresentativePaper(BaseModel):
     title: str
     year: Optional[int] = None
     primary_category: str
-    arxiv_url: str
+    arxiv_url: Optional[str] = None
 
 
 class CorpusTopicBucket(BaseModel):
@@ -121,14 +126,26 @@ class ArxivImportBatchResponse(BaseModel):
     items: list[UploadResponse]
 
 
+class FileUploadBatchResponse(BaseModel):
+    total: int
+    items: list[UploadResponse]
+
+
 class UploadJobResponse(BaseModel):
     job_id: str
     paper_id: str
     filename: str
     title: str
     status: str
+    stage: str
+    progress: int
     num_chunks: int
     message: Optional[str] = None
+    source_kind: str
+    media_type: Optional[str] = None
+    content_hash: Optional[str] = None
+    error_code: Optional[str] = None
+    warnings: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 

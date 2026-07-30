@@ -50,6 +50,13 @@ class Settings(BaseSettings):
     retrieval_k: int = 20
     final_context_k: int = 5
 
+    # --- Heterogeneous document ingestion ---
+    ingest_max_file_mb: int = 50
+    ingest_max_archive_uncompressed_mb: int = 200
+    ingest_ocr_enabled: bool = True
+    ingest_ocr_languages: str = "eng+chi_sim"
+    ingest_ocr_min_text_chars: int = 80
+
     # --- Chat history ---
     chat_history_window: int = 10
 
@@ -112,6 +119,7 @@ class Settings(BaseSettings):
     # --- Data paths ---
     data_dir: str = str(PROJECT_ROOT / "data")
     pdf_dir: str = str(PROJECT_ROOT / "data" / "pdfs")
+    upload_dir: str = str(PROJECT_ROOT / "data" / "uploads")
     metadata_json: str = str(PROJECT_ROOT / "data" / "metadata_filtered.json")
 
     # --- API ---

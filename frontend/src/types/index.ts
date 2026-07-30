@@ -13,8 +13,10 @@ export interface Source {
   authors: string[]
   year: number | null
   primary_category?: string
+  source_kind?: string
+  media_type?: string | null
   doi?: string
-  arxiv_url: string
+  arxiv_url?: string | null
   score?: number
   page_num?: number
   snippet?: string
@@ -60,7 +62,9 @@ export interface SourceCard {
   authors?: string[]
   year?: number | null
   primary_category?: string | null
-  arxiv_url: string
+  source_kind?: string
+  media_type?: string | null
+  arxiv_url?: string | null
   relevance: Relevance
   hit_count: number
   summary: string
@@ -171,6 +175,9 @@ export interface PaperSummary {
   doi?: string | null
   abstract?: string | null
   arxiv_url?: string | null
+  source_kind: string
+  media_type?: string | null
+  original_filename?: string | null
   ingest_status: string
   num_chunks: number
 }
@@ -185,7 +192,7 @@ export interface CorpusRepresentativePaper {
   title: string
   year: number | null
   primary_category: string
-  arxiv_url: string
+  arxiv_url?: string | null
 }
 
 export interface CorpusTopicBucket {
@@ -226,8 +233,15 @@ export interface UploadJob {
   filename: string
   title: string
   status: string
+  stage: string
+  progress: number
   num_chunks: number
   message?: string | null
+  source_kind: string
+  media_type?: string | null
+  content_hash?: string | null
+  error_code?: string | null
+  warnings: string[]
   created_at: string
   updated_at: string
 }

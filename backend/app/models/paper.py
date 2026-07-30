@@ -36,6 +36,17 @@ class Paper(Base):
     entry_id: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
     published: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     updated: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    source_kind: Mapped[str] = mapped_column(
+        String(32), default="arxiv", index=True
+    )
+    media_type: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    content_hash: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True, index=True
+    )
+    original_filename: Mapped[Optional[str]] = mapped_column(
+        String(512), nullable=True
+    )
+    ingest_metadata: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     ingest_status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
     ingest_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -63,6 +74,9 @@ class Chunk(Base):
     chunk_text: Mapped[str] = mapped_column(Text)
     page_num: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     n_tokens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    modality: Mapped[str] = mapped_column(String(32), default="text", index=True)
+    section: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    source_locator: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     paper: Mapped["Paper"] = relationship(back_populates="chunks")

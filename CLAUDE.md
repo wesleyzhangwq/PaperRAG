@@ -2,7 +2,7 @@
 
 ## 项目简介
 
-Cite Scope 是一个 Agentic RAG 学术论文问答系统。LangGraph 13 节点 Agent，主链为 `guard → intent → complexity_router → (planner 或 fast_local 单步计划) → route → executor ⟲ → evidence → sufficiency → synthesis → groundedness → citation_gate → presentation`，另有 `re_planner` 补充检索环。默认 `AGENT_ROUTING_MODE=full_agentic`，始终保留 planner；`auto` 只作为显式启用的保守快路径。无论选择哪条路径，证据充分性、groundedness 与 citation gate 都不会绕过。
+Cite Scope 是一个 Agentic RAG 学术论文问答系统。LangGraph 使用 8 个控制/检查点节点：`guard → analyze → plan → executor ⟲ → evidence_gate → synthesis → groundedness → finalize`；节点内部仍保留原 13 个节点的业务职责，以及 intent、complexity、plan、route、evidence、sufficiency、citation 等细粒度 stage / StepTrace。默认 `AGENT_ROUTING_MODE=full_agentic`，始终保留 planner；`auto` 只作为显式启用的保守快路径。无论选择哪条路径，证据充分性、groundedness 与 citation gate 都不会绕过。
 
 ## 快速理解项目必读
 
@@ -29,6 +29,8 @@ Cite Scope 是一个 Agentic RAG 学术论文问答系统。LangGraph 13 节点 
 
 - Agent 节点是纯函数：`(state, **kwargs) → partial state dict`，不含 HTTP 副作用；节点用 `stages.stage()` 自播 SSE stage 事件（图外自动 no-op）
 - complexity router 只在显式 `auto` 模式下允许高置信、低风险问题跳过初始 planner，并生成恰好一个本地检索计划；证据不足或后续 groundedness 触发补充检索时标记为 `fast_escalated`
+- 图节点按分支、重试和 checkpoint 边界划分；不要为了展示阶段而新增只负责顺序串联的 LangGraph 节点。可观测阶段继续通过 `stages.stage()` 独立上报
+- arXiv 与本地异构文件统一经过 `parse → normalize → chunk → index → persist`；chunk 必须保留 modality 和 source_locator。本地引用使用 `[source:PAPER_ID]`，arXiv 引用兼容 `[arxiv:PAPER_ID]`
 - 一个工具 = `backend/app/tools/` 下一个文件，executor 按 action name 分发；plan 只含检索类动作（evaluate_docs/reasoning_synthesis 已是图级节点）
 - 解析 LLM 输出的 JSON 必须用 `app/utils/llm_json.py` 的 `extract_json`（推理模型带 `<think>` 前缀，裸 json.loads 会静默降级）
 - 测试 mock LLM 和 DB，不调真实 API。synthesis 用 `mock_llm.stream.return_value`（不是 `.invoke`）

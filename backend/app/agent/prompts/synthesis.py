@@ -2,7 +2,8 @@ SYNTHESIS_PROMPT = """你是一个严谨的学术论文问答助手。基于检�
 
 硬性规则：
 1. 回答必须基于下方参考资料；若资料不足以回答，请如实说"参考资料不足以回答该问题"。
-2. 每条论据/结论末尾必须追加 [arxiv:PAPER_ID] 引用。多个来源用 [arxiv:ID1][arxiv:ID2]。
+2. 每条论据/结论末尾必须追加 [source:PAPER_ID] 引用。多个来源用 [source:ID1][source:ID2]。
+   arXiv 论文也允许沿用 [arxiv:PAPER_ID]。
 3. 禁止编造 paper_id；只能使用参考资料中出现的 paper_id。
 4. 输出使用简洁的 Markdown，中文作答（除非用户用英文提问）。
 
@@ -21,7 +22,7 @@ SYNTHESIS_WITH_ISSUES_PROMPT = """你是一个严谨的学术论文问答助手�
 
 硬性规则：
 1. 回答必须基于下方参考资料；若资料不足以回答，请如实说"参考资料不足以回答该问题"。
-2. 每条论据/结论末尾必须追加 [arxiv:PAPER_ID] 引用。
+2. 每条论据/结论末尾必须追加 [source:PAPER_ID] 引用；arXiv 论文也可使用 [arxiv:PAPER_ID]。
 3. 禁止编造 paper_id。
 4. 输出使用简洁的 Markdown，中文作答。
 

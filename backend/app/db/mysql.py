@@ -30,6 +30,7 @@ def init_db() -> None:
     from app.models import upload_job  # noqa: F401 register tables
     Base.metadata.create_all(bind=engine)
     _migrate_chat_history()
+    _migrate_ingestion_schema()
 
 
 def _migrate_chat_history() -> None:
@@ -64,6 +65,71 @@ def _migrate_chat_history() -> None:
                 ))
     except Exception as e:
         log.warning("chat_history migration skipped: %s", e)
+
+
+def _add_missing_columns(table: str, definitions: dict[str, str]) -> None:
+    """Apply the project's lightweight, idempotent additive migrations."""
+    insp = inspect(engine)
+    if table not in insp.get_table_names():
+        return
+    existing = {column["name"] for column in insp.get_columns(table)}
+    with engine.begin() as conn:
+        for name, ddl in definitions.items():
+            if name not in existing:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
+
+
+def _ensure_index(table: str, index_name: str, column: str) -> None:
+    insp = inspect(engine)
+    if table not in insp.get_table_names():
+        return
+    existing = {item["name"] for item in insp.get_indexes(table)}
+    if index_name not in existing:
+        with engine.begin() as conn:
+            conn.execute(
+                text(f"CREATE INDEX {index_name} ON {table} ({column})")
+            )
+
+
+def _migrate_ingestion_schema() -> None:
+    """Add provenance and progress fields for heterogeneous ingestion."""
+    try:
+        _add_missing_columns(
+            "papers",
+            {
+                "source_kind": "VARCHAR(32) NOT NULL DEFAULT 'arxiv'",
+                "media_type": "VARCHAR(128) NULL",
+                "content_hash": "VARCHAR(64) NULL",
+                "original_filename": "VARCHAR(512) NULL",
+                "ingest_metadata": "JSON NULL",
+            },
+        )
+        _add_missing_columns(
+            "chunks",
+            {
+                "modality": "VARCHAR(32) NOT NULL DEFAULT 'text'",
+                "section": "VARCHAR(512) NULL",
+                "source_locator": "JSON NULL",
+            },
+        )
+        _add_missing_columns(
+            "upload_jobs",
+            {
+                "stage": "VARCHAR(32) NOT NULL DEFAULT 'queued'",
+                "progress": "INT NOT NULL DEFAULT 0",
+                "source_kind": "VARCHAR(32) NOT NULL DEFAULT 'arxiv'",
+                "media_type": "VARCHAR(128) NULL",
+                "content_hash": "VARCHAR(64) NULL",
+                "error_code": "VARCHAR(64) NULL",
+                "warnings": "JSON NULL",
+            },
+        )
+        _ensure_index("papers", "ix_papers_source_kind", "source_kind")
+        _ensure_index("papers", "ix_papers_content_hash", "content_hash")
+        _ensure_index("chunks", "ix_chunks_modality", "modality")
+        _ensure_index("upload_jobs", "ix_upload_jobs_stage", "stage")
+    except Exception as exc:
+        log.warning("ingestion schema migration skipped: %s", exc)
 
 
 def get_db():

@@ -30,6 +30,16 @@ def _is_visible(paper: Paper) -> bool:
     return True
 
 
+def _paper_source_kind(paper: Paper) -> str:
+    value = getattr(paper, "source_kind", None)
+    return value if isinstance(value, str) and value else "arxiv"
+
+
+def _paper_media_type(paper: Paper) -> str | None:
+    value = getattr(paper, "media_type", None)
+    return value if isinstance(value, str) and value else None
+
+
 def citation_gate_node(state: AgentState, *, db: Session) -> dict:
     """Extract citations, resolve to Sources, strip unresolvable markers."""
     t0 = time.perf_counter()
@@ -54,6 +64,7 @@ def citation_gate_node(state: AgentState, *, db: Session) -> dict:
         for pid in cited_ids:
             paper = db.query(Paper).filter(Paper.paper_id == pid).one_or_none()
             if pid in context_ids and paper is not None and _is_visible(paper):
+                source_kind = _paper_source_kind(paper)
                 allowed_ids.add(pid)
                 sources.append(Source(
                     paper_id=pid,
@@ -61,8 +72,14 @@ def citation_gate_node(state: AgentState, *, db: Session) -> dict:
                     authors=paper.authors or [],
                     year=paper.year,
                     primary_category=paper.primary_category,
+                    source_kind=source_kind,
+                    media_type=_paper_media_type(paper),
                     doi=paper.doi,
-                    arxiv_url=f"https://arxiv.org/abs/{pid}",
+                    arxiv_url=(
+                        f"https://arxiv.org/abs/{pid}"
+                        if source_kind == "arxiv"
+                        else None
+                    ),
                 ))
             elif pid in context_ids and paper is None:
                 allowed_ids.add(pid)
@@ -74,6 +91,7 @@ def citation_gate_node(state: AgentState, *, db: Session) -> dict:
                     authors=[],
                     year=None,
                     primary_category=None,
+                    source_kind="arxiv",
                     doi=None,
                     arxiv_url=f"https://arxiv.org/abs/{pid}",
                 ))

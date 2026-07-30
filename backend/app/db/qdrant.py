@@ -238,6 +238,15 @@ class QdrantVectorStore:
         metadatas = metadatas or [{} for _ in texts]
         ids = ids or [str(uuid.uuid4()) for _ in texts]
         vectors = self._embedding.embed_documents(texts)
+        if len(vectors) != len(texts):
+            raise RuntimeError(
+                "Embedding count mismatch: "
+                f"requested {len(texts)} texts but received {len(vectors)} vectors"
+            )
+        if len(metadatas) != len(texts) or len(ids) != len(texts):
+            raise ValueError(
+                "texts, metadatas, and ids must contain the same number of items"
+            )
         points: list[models.PointStruct] = []
         for source_id, text, metadata, vector in zip(ids, texts, metadatas, vectors):
             point_id = _to_point_id(source_id)

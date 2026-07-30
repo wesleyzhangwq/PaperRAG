@@ -103,13 +103,15 @@
               class="text-xs leading-5 text-text-secondary"
             >
               <a
-                :href="paper.arxiv_url"
+                v-if="paper.arxiv_url"
+                :href="paper.arxiv_url || undefined"
                 target="_blank"
                 rel="noopener"
                 class="hover:text-accent hover:underline"
               >
                 {{ paper.title }}
               </a>
+              <span v-else>{{ paper.title }}</span>
               <span class="text-text-tertiary">
                 <span v-if="paper.year"> · {{ paper.year }}</span>
                 <span v-if="paper.primary_category"> · {{ paper.primary_category }}</span>

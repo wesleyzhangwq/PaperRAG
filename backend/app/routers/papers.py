@@ -84,9 +84,19 @@ OTHER_TOPIC = TopicDefinition(
 )
 
 
+def _paper_source_kind(paper: Paper) -> str:
+    value = getattr(paper, "source_kind", None)
+    return value if isinstance(value, str) and value else "arxiv"
+
+
+def _optional_text(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None
+
+
 def _to_summary(p: Paper) -> PaperSummary:
     topic_key = _bucket_key_for_paper(p)
     topic = TOPIC_BY_KEY.get(topic_key, OTHER_TOPIC)
+    source_kind = _paper_source_kind(p)
     return PaperSummary(
         paper_id=p.paper_id,
         title=p.title or "",
@@ -98,7 +108,14 @@ def _to_summary(p: Paper) -> PaperSummary:
         topic_bucket_label=topic.label,
         doi=p.doi,
         abstract=p.abstract,
-        arxiv_url=f"https://arxiv.org/abs/{p.paper_id}",
+        arxiv_url=(
+            f"https://arxiv.org/abs/{p.paper_id}"
+            if source_kind == "arxiv"
+            else None
+        ),
+        source_kind=source_kind,
+        media_type=_optional_text(getattr(p, "media_type", None)),
+        original_filename=_optional_text(getattr(p, "original_filename", None)),
         ingest_status=p.ingest_status or "pending",
         num_chunks=p.num_chunks or 0,
     )
@@ -197,12 +214,17 @@ def _representative_sort_key(paper: Paper) -> tuple[int, int, str]:
 
 
 def _to_representative(paper: Paper) -> CorpusRepresentativePaper:
+    source_kind = _paper_source_kind(paper)
     return CorpusRepresentativePaper(
         paper_id=paper.paper_id,
         title=paper.title or "",
         year=paper.year,
         primary_category=paper.primary_category or "",
-        arxiv_url=f"https://arxiv.org/abs/{paper.paper_id}",
+        arxiv_url=(
+            f"https://arxiv.org/abs/{paper.paper_id}"
+            if source_kind == "arxiv"
+            else None
+        ),
     )
 
 

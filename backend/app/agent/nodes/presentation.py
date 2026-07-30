@@ -207,13 +207,39 @@ def _build_source_cards(
             relevance = "low"
         else:
             relevance = "low"
+        raw_source_kind = (
+            getattr(paper, "source_kind", None)
+            if paper
+            else s.get("source_kind")
+        )
+        source_kind = (
+            raw_source_kind
+            if isinstance(raw_source_kind, str) and raw_source_kind
+            else "arxiv"
+        )
+        raw_media_type = (
+            getattr(paper, "media_type", None)
+            if paper
+            else s.get("media_type")
+        )
+        media_type = (
+            raw_media_type
+            if isinstance(raw_media_type, str) and raw_media_type
+            else None
+        )
         cards.append({
             "paper_id": pid,
             "title": title,
             "authors": (paper.authors if paper and paper.authors else s.get("authors") or [])[:5],
             "year": paper.year if paper else s.get("year"),
             "primary_category": paper.primary_category if paper else s.get("primary_category"),
-            "arxiv_url": f"https://arxiv.org/abs/{pid}",
+            "source_kind": source_kind,
+            "media_type": media_type,
+            "arxiv_url": (
+                f"https://arxiv.org/abs/{pid}"
+                if source_kind == "arxiv"
+                else None
+            ),
             "relevance": relevance,
             "hit_count": hit_count,
             "summary": (paper.abstract[:240] + "…") if (paper and paper.abstract) else "",

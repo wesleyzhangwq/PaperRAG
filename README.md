@@ -19,7 +19,7 @@
   <img alt="License" src="https://img.shields.io/badge/License-MIT-blue">
 </p>
 
-Cite Scope 是一个面向学术论文问答的 **Agentic RAG** 系统。它通过 arXiv ID/URL 拉取官方 metadata 和 PDF，解析入库后用 Qdrant + MySQL 管理论文、片段和会话，再用 LangGraph Agent 进行意图分析、动态规划、多源检索、资料充分性评估、自我反思和带引用回答生成。
+Cite Scope 是一个面向学术论文问答的 **Agentic RAG** 系统。它既能通过 arXiv ID/URL 拉取官方 metadata 和 PDF，也能处理 PDF、Office、网页/文本、表格和图片等本地异构文件；统一解析入库后用 Qdrant + MySQL 管理来源、片段和会话，再用 LangGraph Agent 进行意图分析、动态规划、多源检索、资料充分性评估、自我反思和带引用回答生成。
 
 这个项目的目标不是做一个最短链路的聊天壳，而是展示一个可解释、可调试、可扩展的论文研究助手：用户能看到系统检索了什么、为什么补充检索、哪些论文被引用、回答可信度为什么高或低。
 
@@ -27,9 +27,10 @@ Cite Scope 是一个面向学术论文问答的 **Agentic RAG** 系统。它通�
 
 ## Highlights
 
-- **Agentic workflow**: 12 个 LangGraph 节点，覆盖 `guard -> intent -> planner -> route -> executor -> evidence -> sufficiency -> synthesis -> groundedness -> citation_gate -> presentation`，并通过 `re_planner` 做有界补充检索。
+- **Lean agentic workflow**: 8 个 LangGraph 控制/检查点节点覆盖 `guard -> analyze -> plan -> executor -> evidence_gate -> synthesis -> groundedness -> finalize`；内部保留原 13 个节点的业务职责及细粒度 stage / StepTrace，并通过 re-planning 做有界补充检索。
 - **Adaptive retrieval plan**: Planner 根据问题复杂度生成不同检索计划，而不是固定跑一条 RAG pipeline。
 - **Hybrid retrieval**: Qdrant dense vector search 与 BM25 sparse ranking 融合，支持 oversampling、alpha 权重和检索缓存。
+- **Heterogeneous ingestion**: arXiv 与 PDF、DOCX、PPTX、HTML、Markdown/TXT、CSV/XLSX、图片共用 `parse -> normalize -> chunk -> index -> persist`，并保留 text/table/image_ocr 模态和 page/slide/sheet locator。
 - **Self-verification**: `sufficiency` 阶段调用 `evaluate_docs` 检查证据充分性，`groundedness` 检查引用、完整性与逻辑；失败后按预算触发补充检索或重新生成。
 - **Transparent execution**: 前端通过 SSE 展示每一步耗时、参数、结果摘要、检索片段和调试详情。
 - **Corpus overview**: 新对话和论文库页面可以展示当前 RAG 语料库的主题分布、代表论文和建议问题。
@@ -45,7 +46,7 @@ Cite Scope 是一个面向学术论文问答的 **Agentic RAG** 系统。它通�
 | --- | --- |
 | Chat | 提问、流式回答、查看执行步骤、引用来源和调试详情 |
 | Papers | 浏览已入库论文、检索论文、查看语料库主题 overview |
-| Uploads | 输入 arXiv ID 或 URL，后台拉取 metadata/PDF 并异步入库 |
+| Uploads | 输入 arXiv ID/URL，或批量拖放异构文件；查看解析、OCR、分块和索引进度 |
 | Settings | 查看后端连接、模型和基础配置状态 |
 | Feedback | 对回答标记有帮助 / 需改进，为后续评估闭环保留数据 |
 
@@ -61,13 +62,12 @@ User query + chat history
   - empty/oversize/injection checks
         |
         v
-  intent
+  analyze
+  - intent + conservative complexity router
         |
         v
-  planner
-        |
-        v
-  route
+  plan
+  - planner/re-planner + deterministic source route
   - local-first source policy
         |
         v
@@ -80,27 +80,21 @@ User query + chat history
   - get_paper_chunks
         |
         v
-  evidence
-  - dedupe/rerank/context budget
-        |
-        v
-  sufficiency
+  evidence_gate
+  - dedupe/rerank/context budget + sufficiency
     | insufficient + budget
-    +-----------------------> re_planner -> executor
+    +-----------------------> plan(re-planner) -> executor
     |
     v
   synthesis (streaming)
         |
         v
   groundedness
-    | re-retrieve ---------> re_planner -> executor
+    | re-retrieve ---------> plan(re-planner) -> executor
     | re-generate ---------> synthesis
     v
-  citation_gate
-  - resolve and strip unverifiable citations
-        |
-        v
-  presentation -> SSE/UI
+  finalize
+  - citation gate + presentation -> SSE/UI
 ```
 
 ### Backend
@@ -110,7 +104,7 @@ backend/app/
 ├── agent/          LangGraph state, graph, checkpoint, streaming, nodes
 ├── tools/          Retrieval, web search, evaluation, paper lookup tools
 ├── routers/        FastAPI routes for chat, papers, uploads, ingest, feedback
-├── services/       PDF ingestion and hybrid retrieval engine
+├── services/       Heterogeneous document parsing, unified ingestion, hybrid retrieval
 ├── db/             MySQL and Qdrant clients
 ├── models/         SQLAlchemy ORM models
 ├── schemas/        Pydantic API contracts
@@ -137,7 +131,7 @@ frontend/src/
 | Qdrant | Dense vectors for paper chunks |
 | BM25 cache | Sparse retrieval over chunk text for hybrid ranking |
 | SQLite checkpoint | LangGraph thread checkpoint state |
-| Local `data/` | PDFs, metadata JSON, checkpoint files and transient artifacts |
+| Local `data/` | arXiv PDFs, uploaded source files, metadata JSON and checkpoint files |
 
 ---
 
@@ -155,6 +149,12 @@ Edit `.env` and fill at least:
 ```bash
 LLM_API_KEY=...
 EMBEDDING_API_KEY=...
+```
+
+Image and scanned-PDF OCR uses the local Tesseract binary. On macOS:
+
+```bash
+brew install tesseract tesseract-lang
 ```
 
 Current defaults use:
@@ -263,6 +263,7 @@ Important `.env` groups:
 | Agent | `AGENT_MAX_PLAN_STEPS`, `AGENT_MAX_REFLECTIONS`, `AGENT_CHECKPOINT_ENABLED`, `AGENT_CHECKPOINT_PATH` |
 | Search | `TAVILY_API_KEY`, `ARXIV_MAX_RESULTS` |
 | Safety | `RATE_LIMIT_ENABLED`, `API_AUTH_ENABLED`, `API_KEYS`, auth exempt paths |
+| Ingestion | `UPLOAD_DIR`, `INGEST_MAX_FILE_MB`, `INGEST_MAX_ARCHIVE_UNCOMPRESSED_MB`, OCR settings |
 | Data | `DATA_DIR`, `PDF_DIR`, `METADATA_JSON` |
 
 See [.env.example](.env.example) for the full list.
@@ -281,7 +282,7 @@ See [.env.example](.env.example) for the full list.
 | `GET /papers` | list/search ingested papers |
 | `GET /papers/overview` | corpus topic overview |
 | `POST /upload/arxiv` | queue arXiv ID/URL import and background ingest |
-| `POST /upload` | disabled legacy local PDF upload endpoint |
+| `POST /upload/files` | queue 1–20 heterogeneous local files for background ingest |
 | `GET /upload/jobs` | list upload jobs |
 | `POST /feedback` | store answer feedback |
 | `POST /ingest` | admin ingestion endpoint |
@@ -349,7 +350,7 @@ The test suite mocks LLM and database boundaries. It should not call real LLM, e
 
 ## English
 
-Cite Scope is an **Agentic RAG system for academic paper Q&A**. It imports arXiv metadata and PDFs from arXiv IDs or URLs, stores paper metadata and chunks in MySQL, indexes chunk embeddings in Qdrant, and uses a LangGraph agent to plan retrieval, evaluate evidence, synthesize cited answers, and self-reflect before returning the final response.
+Cite Scope is an **Agentic RAG system for academic document Q&A**. It imports arXiv papers and heterogeneous local files, stores provenance-aware chunks in MySQL, indexes embeddings in Qdrant, and uses a LangGraph agent to plan retrieval, evaluate evidence, synthesize cited answers, and self-reflect before returning the final response.
 
 ### Why this project exists
 
@@ -357,12 +358,12 @@ Cite Scope is designed as a portfolio-grade, explainable research assistant. Ins
 
 ### Key capabilities
 
-- A 12-node LangGraph workflow with guardrails, routing, evidence processing, sufficiency checks, groundedness verification, citation gating and presentation.
+- An 8-node LangGraph control graph that preserves the former 13 node responsibilities and fine-grained stage/trace observability.
 - Hybrid dense + BM25 retrieval with tunable ranking parameters.
 - Optional Tavily web search for evidence supplementation.
 - SSE streaming for live answer tokens and execution-step updates.
 - Persistent conversations, chat history and LangGraph checkpoints.
-- arXiv ID/URL import queue with background ingestion.
+- A shared background-ingestion state machine for arXiv plus PDF, DOCX, PPTX, HTML, text, spreadsheet, and image sources.
 - Corpus overview for topic buckets, representative papers and suggested questions.
 - Vue 3 frontend with source cards, citation popovers and debug panels.
 
